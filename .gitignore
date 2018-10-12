@@ -1,7 +1,8 @@
 *.pyc
-*__pycache__*
+*/devel
+*/build
+*.catkin_workspace
+
+# why do not work??
 */backup/*
-catkin_ws/build
-catkin_ws/devel
-logs/*
-*/backup/*.bb
+*/logs
