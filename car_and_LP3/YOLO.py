@@ -173,8 +173,10 @@ class YOLO(Video):
 
         self.backup_dir = os.path.join(args.version, 'backup')
         backup_list = glob.glob(self.backup_dir+'/*')
-        backup_latest = max(backup_list, key=os.path.getctime)
-        #backup_latest = os.path.join(self.backup_dir, 'iter_bb0')
+        if len(backup_list) != 0:
+        	backup_latest = max(backup_list, key=os.path.getctime)
+        else:
+            backup_latest = os.path.join(self.backup_dir, 'iter_bb0')
         print(backup_latest)
         init_NN(self.net, backup_latest, ctx)
 

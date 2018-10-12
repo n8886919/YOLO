@@ -1,0 +1,1 @@
+blender /home/nolan/Desktop/insulator/blank.blend --background --python blender_render_png.py

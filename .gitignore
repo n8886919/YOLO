@@ -2,7 +2,8 @@
 */devel
 */build
 *.catkin_workspace
-
-# why do not work??
-*/backup/*
-*/logs
+# "*" matches anything except "/"
+**/logs/**
+**/backup/**
+**/video/**
+**/test_image
