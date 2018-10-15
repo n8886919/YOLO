@@ -59,7 +59,7 @@ class RadarProb():
 
     def plot3d(self, confidence, prob):
         prob = softmax(prob)
-        prob = prob * confidence  # / max(prob)
+        prob = prob * confidence  / max(prob)
         vecs = self.classes_xyz * np.expand_dims(prob, axis=1)
         print(np.sum(vecs, axis=0))
 

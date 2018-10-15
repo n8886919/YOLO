@@ -1,9 +1,13 @@
 #!/usr/bin/env python
+from __future__ import print_function
 import glob
 import sys
 import yaml
+import datetime
 
 from mxnet import gluon
+from mxboard import SummaryWriter
+
 from utils import *
 from render_car import *
 import parser
@@ -22,96 +26,9 @@ if args.mode == 'train':
 else:
     ctx = [gpu(int(args.gpu[0]))]
 # -------------------- Global variables # -------------------- #
-
-
-class benchmark():
-    from mxboard import SummaryWriter
-
-    def __init__(self, logdir, car_renderer):
-        self.logdir = logdir
-        self.car_renderer = car_renderer
-        self.iou_step = 0
-
-    def mean_iou(self, mode):
-
-        bg = load_background(mode)
-        sum_iou = 0
-        for i in range(iters):
-            bg = load_background(self, train_or_val, bs, w, h)
-            imgs, labels = self.car_renderer.render(bg, True, 'valid', 1.0)
-            Cout = self.predict(img)
-            Couts = net(imgs)
-            for j in range(batch_size):
-                iou = get_iou(labels[j], couts[j])
-                sum_iou += iou
-
-        mean_iou = sum_iou / (iters * batch_size)
-        self.sw.add_scalar('iou', mean_iou, self.iou_step)
-        self.iou_step += 1
-
-    def pr_curve(self):
-
-        from mxboard import SummaryWriter
-        sw = SummaryWriter(logdir=NN + '/logs/PR_Curve', flush_secs=5)
-
-        path = '/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/HP_31/'
-        BG_iter = image.ImageIter(100, (3, self.size[0], self.size[1]),
-            path_imgrec=path+'sun2012_train.rec',
-            path_imgidx=path+'sun2012_train.idx',
-            shuffle=True, pca_noise=0, 
-            brightness=0.5, saturation=0.5, contrast=0.5, hue=1.0,
-            rand_crop=True, rand_resize=True, rand_mirror=True, inter_method=10)
-
-        car_renderer = RenderCar(100, self.size[0], self.size[1], ctx[0])
-        predictions = [] #[[]*24,[]*24,[]*24],............]
-        labels = [] #[1,5,25,3,5,12,22,.............]
-
-        for BG in BG_iter:
-            BG = BG.data[0].as_in_context(ctx[0])
-            img_batch, label_batch = car_renderer.render_pascal(BG, 'valid')
-
-            C_pred = self.get_feature(img_batch)
-
-
-            for i in range(100):
-                C_score = C_pred[0][i]
-                C_1 = C_score.reshape(-1).argmax(axis=0).reshape(-1)
-
-                Cout = C_pred[3][i].reshape((-1, self.num_class))
-                Cout = softmax(Cout[C_1][0].asnumpy())
-
-                predictions.append(Cout)
-                labels.append(int(label_batch[i,0,0].asnumpy()))
-
-            if len(labels)>(3000-1): break
-
-        labels = np.array(labels)
-        predictions = np.array(predictions)
-
-
-        for i in range(self.num_class):
-            if i == 0:
-                j = 23
-                k = 1
-            elif i == 23:
-                j = 22
-                k = 0
-            else:
-                j = i - 1
-                k = i + 1
-            label = ((labels==i)+(labels==j)+(labels==k)).astype(int)
-
-            predict = predictions[:,i] + predictions[:,j] + predictions[:,k]
-            label = nd.array(label)
-            predict = nd.array(predict)
-
-            sw.add_pr_curve('%d'%i, label, predict, 100, global_step=0)
-
-        predictions = nd.uniform(low=0, high=1, shape=(100,), dtype=np.float32)
-        labels = nd.uniform(low=0, high=2, shape=(100,), dtype=np.float32).astype(np.int32)
-        print(labels)
-        print(predictions)
-        sw1.add_pr_curve(tag='pseudo_pr_curve', predictions=predictions, labels=labels, num_thresholds=120)
+scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.01, 'box': 1.0}
+label_mode = ['Dense', 'Sparse']
+exp = datetime.datetime.now().strftime("%m-%dx%H-%M") + '_100' + label_mode[1]
 
 
 def main():
@@ -164,8 +81,8 @@ class YOLO(Video):
         h = self.size[0]
         w = self.size[1]
         self.area = [int(h*w/step**2) for step in self.steps]
-
-        print('\033[1;33;40m')
+        print('\033[7;33m')
+        print(exp)
         print('Device = {}'.format(ctx))
         print('Loss = {}'.format(self.loss_name))
         print('Step = {}'.format(self.steps))
@@ -173,25 +90,22 @@ class YOLO(Video):
 
         self.backup_dir = os.path.join(args.version, 'backup')
         backup_list = glob.glob(self.backup_dir+'/*')
+
         if len(backup_list) != 0:
-        	backup_latest = max(backup_list, key=os.path.getctime)
+            backup_latest = max(backup_list, key=os.path.getctime)
         else:
             backup_latest = os.path.join(self.backup_dir, 'iter_bb0')
-        print(backup_latest)
+        backup_latest = '/home/nolan/Desktop/YOLO/car_and_LP3/v1/backup/10-15x20-37_100Sparseiter_3'
+
         init_NN(self.net, backup_latest, ctx)
 
+        self._init_valid()
         if args.mode == 'train':
-            print('Batch Size = {}'.format(self.batch_size))
-            print('Record Step = {}'.format(self.record_step))
+            print('\033[7;33mBatch Size = {}'.format(self.batch_size))
+            print('Record Step = {}\033[0m'.format(self.record_step))
             self._init_train()
 
-        else:
-            self._init_valid()
-
-        print('\033[0m')
-
     def _init_train(self):
-        from mxboard import SummaryWriter
 
         self.backward_counter = 0
 
@@ -209,8 +123,9 @@ class YOLO(Video):
             'adam',
             {'learning_rate': 0.0001})
 
-        self.sw = SummaryWriter(logdir=args.version+'/logs')#, flush_secs=30)
-
+        logdir = args.version+'/logs'
+        self.sw = SummaryWriter(logdir=logdir, verbose=False)
+        self.sw.add_text(tag=logdir, text=exp)
         if not os.path.exists(self.backup_dir):
             os.makedirs(self.backup_dir)
 
@@ -312,21 +227,26 @@ class YOLO(Video):
                     C_score[b, px, anc, :] = 1.0  # others are zero
                     C_box[b, px, anc, :] = box
                     C_rotate[b, px, anc, :] = L[5]
-                    a = nd.argmax(L[6:], axis=0)
-                    C_class[b, px, anc, a] = 1
-                    #C_class[b, px, anc, :] = L[6:]
+                    if 'Sparse' in exp:
+                        a = nd.argmax(L[6:], axis=0)
+                        C_class[b, px, anc, a] = 1
+                    elif 'Dense' in exp:
+                        C_class[b, px, anc, :] = L[6:]
+                    else:
+                        print('Dense Or Sparse?')
 
         return [C_score, C_box, C_rotate, C_class], C_mask
 
-    def train_the(self, batch_xs, batch_ys, rotate_lr=100.0):
+    def train_the(self, batch_xs, batch_ys, rotate_lr=scale['rotate']):
+
         all_gpu_loss = []
         with mxnet.autograd.record():
             for gpu_i, (bx, by) in enumerate(zip(batch_xs, batch_ys)):
                 all_gpu_loss.append([])
 
-                pred, L_pred = self.net(bx)
+                x, L_pred = self.net(bx)
                 with mxnet.autograd.pause():
-                    label, mask = self.loss_mask(by, gpu_i)
+                    y, mask = self.loss_mask(by, gpu_i)
 
                     score_weight = nd.where(
                         mask > 0,
@@ -335,19 +255,19 @@ class YOLO(Video):
                         ctx=ctx[gpu_i])
 
                 if 'score' in self.loss_name:
-                    s = self.LG_loss(pred[0], label[0], score_weight * 0.1)
+                    s = self.LG_loss(x[0], y[0], score_weight * scale['score'])
                     all_gpu_loss[gpu_i].append(s)
 
                 if 'box' in self.loss_name:
-                    b = self.L2_loss(pred[1], label[1], mask * 1.0)
+                    b = self.L2_loss(x[1], y[1], mask * scale['box'])
                     all_gpu_loss[gpu_i].append(b)
 
                 if 'rotate' in self.loss_name:
-                    r = self.L2_loss(pred[2], label[2], mask * rotate_lr)
+                    r = self.L2_loss(x[2], y[2], mask * rotate_lr)
                     all_gpu_loss[gpu_i].append(r)
 
                 if 'class' in self.loss_name:
-                    c = self.CE_loss(pred[3], label[3], mask * 0.05)
+                    c = self.CE_loss(x[3], y[3], mask * scale['class'])
                     all_gpu_loss[gpu_i].append(c)
 
                 sum(all_gpu_loss[gpu_i]).backward()
@@ -365,33 +285,42 @@ class YOLO(Video):
         ax = fig.add_subplot(1, 1, 1)
         '''
         # -------------------- load data -------------------- #
-        BG_iter = load_background('train', self.batch_size, self.size[0], self.size[1])
-        car_renderer = RenderCar(self.batch_size, self.size[0], self.size[1], self.classes, ctx[0])
-        #addLP = AddLP(self.size[0], self.size[1], self.num_class)
+        h, w = self.size
 
+        # -------------------- valid -------------------- #
+        self.iou_bs = 30
+        self.bg_iter_valid = load_background('val', self.iou_bs, h, w)
+
+        # -------------------- train -------------------- #
+        self.bg_iter_train = load_background('train', self.batch_size, h, w)
+        self.car_renderer = RenderCar(h, w, self.classes, ctx[0])
+        '''addLP = AddLP(h, w, self.num_class)'''
+
+        # -------------------- main loop -------------------- #
         while True:
+            #print('\r%d'%self.backward_counter, end='')
             if self.backward_counter % 10 == 0:
-                bg = ImageIter_next_batch(BG_iter).as_in_context(ctx[0])
+                bg = ImageIter_next_batch(self.bg_iter_train)
+                bg = bg.as_in_context(ctx[0])
 
             # -------------------- render dataset -------------------- #
-            imgs, labels = car_renderer.render(bg, 'train', render_rate=0.5)
+            imgs, labels = self.car_renderer.render(bg, 'train', render_rate=0.5, pascal=False)
             batch_xs, batch_ys = split_render_data(imgs, labels, ctx)
 
-            '''
-            if np.random.rand() > 0.2:
-               batch_x[0], batch_y[0] = addLP.add(batch_x[0], batch_y[0])
-            '''
+            '''if np.random.rand() > 0.2:
+                batch_x[0], batch_y[0] = addLP.add(batch_x[0], batch_y[0])'''
+
             # -------------------- training -------------------- #
             for _ in range(1):
                 self.train_the(batch_xs, batch_ys)
 
             # -------------------- render dataset -------------------- #
-            imgs, labels = car_renderer.render(bg, 'train', pascal=True, render_rate=0.5)
+            imgs, labels = self.car_renderer.render(bg, 'train', render_rate=0.5, pascal=True)
             batch_xs, batch_ys = split_render_data(imgs, labels, ctx)
 
             # -------------------- training -------------------- #
             for _ in range(1):
-                self.train_the(batch_xs, batch_ys, rotate_lr=0)
+                self.train_the(batch_xs, batch_ys, rotate_lr=0.)
 
             # -------------------- show training image # --------------------
             '''
@@ -402,15 +331,55 @@ class YOLO(Video):
             raw_input()
             '''
 
+    def valid_iou(self):
+        for pascal in [True, False]:
+            iou_sum = 0
+            c = 0
+            for bg in self.bg_iter_valid:
+                c += 1
+                bg = bg.data[0].as_in_context(ctx[0])
+                imgs, labels = self.car_renderer.render(bg, 'valid', pascal=pascal)
+                outs = self.predict(imgs)
+
+                pred = nd.zeros((self.iou_bs, 4))
+                pred[:, 0] = outs[:, 2] - outs[:, 4] / 2
+                pred[:, 1] = outs[:, 1] - outs[:, 3] / 2
+                pred[:, 2] = outs[:, 2] + outs[:, 4] / 2
+                pred[:, 3] = outs[:, 1] + outs[:, 3] / 2
+                pred = pred.as_in_context(ctx[0])
+
+                for i in range(self.iou_bs):
+                    iou_sum += get_iou(pred[i], labels[i, 0, 0:5], mode=2)
+
+            mean_iou = iou_sum.asnumpy() / float(self.iou_bs * c)
+            self.sw.add_scalar(
+                'Mean_IOU',
+                (exp + 'PASCAL %r' % pascal , mean_iou),
+                self.backward_counter)
+
+            self.bg_iter_valid.reset()
+
     def record_to_tensorboard_and_save(self, loss):
         for i, L in enumerate(loss):
-            self.sw.add_scalar('Loss',
-                               (self.loss_name[i], nd.mean(L).asnumpy()),
-                               self.backward_counter)
+            loss_name = self.loss_name[i]
+            self.sw.add_scalar(
+                exp + 'Scaled_Loss',
+                (loss_name, nd.mean(L).asnumpy()),
+                self.backward_counter)
+
+            self.sw.add_scalar(
+                loss_name,
+                (exp, nd.mean(L).asnumpy()/scale[loss_name]),
+                self.backward_counter)
+
+        if self.backward_counter % 1000 == 0:
+            self.valid_iou()
+
         self.backward_counter += 1
+
         if self.backward_counter % self.record_step == 0:
             idx = self.backward_counter//self.record_step
-            save_model = os.path.join(self.backup_dir, 'iter' + '_%d' % idx)
+            save_model = os.path.join(self.backup_dir, exp + 'iter' + '_%d' % idx)
             self.net.collect_params().save(save_model)
 
     def _init_valid(self):
@@ -510,11 +479,11 @@ class YOLO(Video):
             time.sleep(0.1)
 
     def valid(self):
-        print('\033[1;33;40mValid \033[0;37;40m')
+        print('\033[7;33mValid\033[0m')
         bs = 1
         BG_iter = load_background('val', bs, self.size[0], self.size[1])
         car_renderer = RenderCar(
-            bs, self.size[0], self.size[1], self.classes, ctx[0])
+            self.size[0], self.size[1], self.classes, ctx[0])
         #addLP = AddLP(self.size[0], self.size[1], self.num_class)
 
         plt.ion()
@@ -524,7 +493,13 @@ class YOLO(Video):
 
         for bg in BG_iter:
             bg = bg.data[0].as_in_context(ctx[0])  # b*RGB*w*h
-            imgs, labels = car_renderer.render(bg, 'valid', pascal=False, render_rate=0.7)
+
+            if np.random.rand() > 0.5:
+                imgs, labels = car_renderer.render(
+                    bg, 'train', pascal=False, render_rate=0.7)
+            else:
+                imgs, labels = car_renderer.render(
+                    bg, 'train', pascal=True, render_rate=0.7)
             #img, label = addLP.add(img, label)
             imgs = nd.clip(imgs, 0, 1)
 
@@ -548,6 +523,94 @@ class YOLO(Video):
             raw_input('next')
 
 
+'''
+class Benchmark():
+    def __init__(self, logdir, car_renderer):
+        self.logdir = logdir
+        self.car_renderer = car_renderer
+        self.iou_step = 0
+
+    def mean_iou(self, mode):
+
+        bg = load_background(mode)
+        sum_iou = 0
+        for i in range(iters):
+            bg = load_background(self, train_or_val, bs, w, h)
+            imgs, labels = self.car_renderer.render(bg, True, 'valid', 1.0)
+            Cout = self.predict(img)
+            Couts = net(imgs)
+            for j in range(batch_size):
+                iou = get_iou(labels[j], couts[j])
+                sum_iou += iou
+
+        mean_iou = sum_iou / (iters * batch_size)
+        self.sw.add_scalar('iou', mean_iou, self.iou_step)
+        self.iou_step += 1
+
+    def pr_curve(self):
+
+        from mxboard import SummaryWriter
+        sw = SummaryWriter(logdir=NN + '/logs/PR_Curve', flush_secs=5)
+
+        path = '/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/HP_31/'
+        BG_iter = image.ImageIter(100, (3, self.size[0], self.size[1]),
+            path_imgrec=path+'sun2012_train.rec',
+            path_imgidx=path+'sun2012_train.idx',
+            shuffle=True, pca_noise=0, 
+            brightness=0.5, saturation=0.5, contrast=0.5, hue=1.0,
+            rand_crop=True, rand_resize=True, rand_mirror=True, inter_method=10)
+
+        car_renderer = RenderCar(100, self.size[0], self.size[1], ctx[0])
+        predictions = [] #[[]*24,[]*24,[]*24],............]
+        labels = [] #[1,5,25,3,5,12,22,.............]
+
+        for BG in BG_iter:
+            BG = BG.data[0].as_in_context(ctx[0])
+            img_batch, label_batch = car_renderer.render_pascal(BG, 'valid')
+
+            C_pred = self.get_feature(img_batch)
+
+
+            for i in range(100):
+                C_score = C_pred[0][i]
+                C_1 = C_score.reshape(-1).argmax(axis=0).reshape(-1)
+
+                Cout = C_pred[3][i].reshape((-1, self.num_class))
+                Cout = softmax(Cout[C_1][0].asnumpy())
+
+                predictions.append(Cout)
+                labels.append(int(label_batch[i,0,0].asnumpy()))
+
+            if len(labels)>(3000-1): break
+
+        labels = np.array(labels)
+        predictions = np.array(predictions)
+
+
+        for i in range(self.num_class):
+            if i == 0:
+                j = 23
+                k = 1
+            elif i == 23:
+                j = 22
+                k = 0
+            else:
+                j = i - 1
+                k = i + 1
+            label = ((labels==i)+(labels==j)+(labels==k)).astype(int)
+
+            predict = predictions[:,i] + predictions[:,j] + predictions[:,k]
+            label = nd.array(label)
+            predict = nd.array(predict)
+
+            sw.add_pr_curve('%d'%i, label, predict, 100, global_step=0)
+
+        predictions = nd.uniform(low=0, high=1, shape=(100,), dtype=np.float32)
+        labels = nd.uniform(low=0, high=2, shape=(100,), dtype=np.float32).astype(np.int32)
+        print(labels)
+        print(predictions)
+        sw1.add_pr_curve(tag='pseudo_pr_curve', predictions=predictions, labels=labels, num_thresholds=120)
+'''
 '''
 class LP():
     def __init__(self):
@@ -637,7 +700,6 @@ class LP():
         return [C_score, C_box, C_class], C_mask
 
 '''
-
 
 # -------------------- Main -------------------- #
 if __name__ == '__main__':

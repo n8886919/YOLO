@@ -19,8 +19,8 @@ deg_2_rad = lambda deg: deg * math.pi / 180.
 
 
 class RenderCar():
-    def __init__(self, batch_size, img_h, img_w, classes, ctx):
-        self.bs = batch_size
+    def __init__(self, img_h, img_w, classes, ctx):
+        #self.bs = batch_size
         self.h = img_h
         self.w = img_w
         self.ele_label = np.array(classes)[:, 1]
@@ -38,8 +38,8 @@ class RenderCar():
         self.rawcar_dataset = {'train': [], 'valid': []}
         ssd_path = '/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888'
 
-        raw_car_train_path = ssd_path + '/no_label_car_raw_images/train'
-        raw_car_valid_path = ssd_path + '/no_label_car_raw_images/valid'
+        raw_car_train_path = ssd_path + '/no_label_car_raw_images/100/train'
+        raw_car_valid_path = ssd_path + '/no_label_car_raw_images/100/valid'
 
         for file in os.listdir(raw_car_train_path):
             for img in os.listdir(os.path.join(raw_car_train_path, file)):
@@ -65,9 +65,8 @@ class RenderCar():
             self.pascal_dataset['valid'].append(img_path)
 
         self.pascal3d_anno = ssd_path + '/HP_31/pascal3d_image_and_label/car_imagenet_label'
-        print('Loading background done!')
 
-    def render(self, bg, mode, pascal=True, render_rate=0.5):
+    def render(self, bg, mode, pascal=True, render_rate=1.0):
         '''
         Parameters
         ----------
@@ -93,22 +92,25 @@ class RenderCar():
         else:
             dataset = self.rawcar_dataset[mode]
 
+        bs = len(bg)
         ctx = self.ctx
-        label_batch = nd.ones((self.bs, 1, 6+self.num_cls), ctx=ctx) * (-1)
-        img_batch = nd.zeros((self.bs, 3, self.h, self.w), ctx=ctx)
-        mask = nd.zeros((self.bs, 3, self.h, self.w), ctx=ctx)
-        selected = np.random.randint(len(dataset), size=self.bs)
+        label_batch = nd.ones((bs, 1, 6+self.num_cls), ctx=ctx) * (-1)
+        img_batch = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
+        mask = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
+        selected = np.random.randint(len(dataset), size=bs)
 
-        for i in range(self.bs):
+        for i in range(bs):
             if np.random.rand() > render_rate:
                 continue
 
             img_path = dataset[selected[i]]
             if pascal:
-                ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
-
-                if skip:
-                    continue
+                skip = True
+                while skip:
+                    ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
+                    if not skip:
+                        break
+                    img_path = dataset[selected[np.random.randint()]]
 
                 box_l, box_t, box_r, box_b = box
 
@@ -180,12 +182,11 @@ class RenderCar():
             # -------------------- move -------------------- #
             paste_x = np.random.randint(
                 low=int(-r_box_l-0.3*r_box_w),
-                high=int(self.w-r_box_l-0.7*r_box_w)
-            )
+                high=int(self.w-r_box_l-0.7*r_box_w))
+
             paste_y = np.random.randint(
                 low=int(-r_box_t-0.3*r_box_h),
-                high=int(self.h-r_box_t-0.7*r_box_h)
-            )
+                high=int(self.h-r_box_t-0.7*r_box_h))
 
             box_x = (r_box_r + r_box_l)/2. + paste_x
             box_y = (r_box_b + r_box_t)/2. + paste_y
@@ -245,7 +246,7 @@ class RenderCar():
         cos_ang = np.expand_dims(cos_ang, axis=0)
         cos_ang_gaussion = nd.exp(-nd.array(cos_ang)**2/sigma)
 
-        cos_ang_gaussion_softmax = cos_ang_gaussion / sum(cos_ang_gaussion[0])      
+        cos_ang_gaussion_softmax = cos_ang_gaussion / sum(cos_ang_gaussion[0])
         class_label = np.argmin(cos_ang)
 
         return class_label, cos_ang_gaussion_softmax
