@@ -117,7 +117,7 @@ class Video():
         self.resz = mxnet.image.ForceResizeAug((self.size[1], self.size[0]))
         
         if radar:
-            self.radar_prob.init_plot()
+            self.radar_prob.__init__(24)
 
         if not topic:
             threading.Thread(target=self._get_frame).start()

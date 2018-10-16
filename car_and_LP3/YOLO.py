@@ -10,7 +10,6 @@ from mxboard import SummaryWriter
 
 from utils import *
 from render_car import *
-import parser
 
 sys.path.append('../')
 
@@ -19,16 +18,18 @@ from modules.utils_cv import *
 from modules.licence_plate_render import *
 
 # -------------------- Global variables -------------------- #
-args = parser.Parser()
+args = Parser()
 
 if args.mode == 'train':
     ctx = [gpu(int(i)) for i in args.gpu]
 else:
     ctx = [gpu(int(args.gpu[0]))]
 # -------------------- Global variables # -------------------- #
-scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.01, 'box': 1.0}
+#scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.01, 'box': 1.0}
+scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.1, 'box': 1.0}
 label_mode = ['Dense', 'Sparse']
 exp = datetime.datetime.now().strftime("%m-%dx%H-%M") + '_100' + label_mode[1]
+train_counter = 18010
 
 
 def main():
@@ -39,13 +40,12 @@ def main():
 
     elif args.mode == 'valid':
         yolo.valid()
-        #yolo.get_default_anchors()
 
     elif args.mode == 'video':
-        yolo.run(ctx=ctx[0],
-                 topic=args.topic,
-                 radar=args.radar,
-                 show=args.show)
+        yolo.run(ctx=ctx[0], topic=args.topic, radar=args.radar, show=args.show)
+
+    elif args.mode == 'kmean':
+        yolo.get_default_anchors()
 
     elif args.mode == 'PR':
         yolo.pr_curve()
@@ -55,7 +55,7 @@ def main():
 
 
 class YOLO(Video):
-    def __init__(self):
+    def __init__(self, pretrain=None):
         with open(os.path.join(args.version, 'spec.yaml')) as f:
             spec = yaml.load(f)
 
@@ -81,9 +81,10 @@ class YOLO(Video):
         h = self.size[0]
         w = self.size[1]
         self.area = [int(h*w/step**2) for step in self.steps]
-        print('\033[7;33m')
+        print('\033[1;33m')
         print(exp)
         print('Device = {}'.format(ctx))
+        print('scale = {}'.format(scale))
         print('Loss = {}'.format(self.loss_name))
         print('Step = {}'.format(self.steps))
         print('Area = {}'.format(self.area))
@@ -91,23 +92,26 @@ class YOLO(Video):
         self.backup_dir = os.path.join(args.version, 'backup')
         backup_list = glob.glob(self.backup_dir+'/*')
 
-        if len(backup_list) != 0:
-            backup_latest = max(backup_list, key=os.path.getctime)
-        else:
-            backup_latest = os.path.join(self.backup_dir, 'iter_bb0')
-        backup_latest = '/home/nolan/Desktop/YOLO/car_and_LP3/v1/backup/10-15x20-37_100Sparseiter_3'
 
-        init_NN(self.net, backup_latest, ctx)
+        if pretrain is None:
+            if len(backup_list) != 0:
+                print('Use latest weight')
+                pretrain = max(backup_list, key=os.path.getctime)
+            else:
+                pretrain = 'no pretrain weight'
+
+        init_NN(self.net, pretrain, ctx)
+        self.pretrain = pretrain
 
         self._init_valid()
         if args.mode == 'train':
-            print('\033[7;33mBatch Size = {}'.format(self.batch_size))
+            print('\033[1;33mBatch Size = {}'.format(self.batch_size))
             print('Record Step = {}\033[0m'.format(self.record_step))
             self._init_train()
 
     def _init_train(self):
 
-        self.backward_counter = 0
+        self.backward_counter = train_counter
 
         self.nd_all_anchors = [self.all_anchors.copyto(dev) for dev in ctx]
         self.get_default_ltrb()
@@ -230,8 +234,10 @@ class YOLO(Video):
                     if 'Sparse' in exp:
                         a = nd.argmax(L[6:], axis=0)
                         C_class[b, px, anc, a] = 1
+
                     elif 'Dense' in exp:
                         C_class[b, px, anc, :] = L[6:]
+
                     else:
                         print('Dense Or Sparse?')
 
@@ -297,30 +303,33 @@ class YOLO(Video):
         '''addLP = AddLP(h, w, self.num_class)'''
 
         # -------------------- main loop -------------------- #
+        self.time_recorder = np.zeros(5)
         while True:
+            t = time.time()
             #print('\r%d'%self.backward_counter, end='')
             if self.backward_counter % 10 == 0:
                 bg = ImageIter_next_batch(self.bg_iter_train)
                 bg = bg.as_in_context(ctx[0])
-
+            self.time_recorder[0] += (time.time() - t)
             # -------------------- render dataset -------------------- #
             imgs, labels = self.car_renderer.render(bg, 'train', render_rate=0.5, pascal=False)
             batch_xs, batch_ys = split_render_data(imgs, labels, ctx)
 
             '''if np.random.rand() > 0.2:
                 batch_x[0], batch_y[0] = addLP.add(batch_x[0], batch_y[0])'''
-
+            self.time_recorder[1] += (time.time() - t)
             # -------------------- training -------------------- #
             for _ in range(1):
                 self.train_the(batch_xs, batch_ys)
-
+            self.time_recorder[2] += (time.time() - t)
             # -------------------- render dataset -------------------- #
             imgs, labels = self.car_renderer.render(bg, 'train', render_rate=0.5, pascal=True)
             batch_xs, batch_ys = split_render_data(imgs, labels, ctx)
-
+            self.time_recorder[3] += (time.time() - t)
             # -------------------- training -------------------- #
             for _ in range(1):
                 self.train_the(batch_xs, batch_ys, rotate_lr=0.)
+            self.time_recorder[4] += (time.time() - t)
 
             # -------------------- show training image # --------------------
             '''
@@ -374,6 +383,9 @@ class YOLO(Video):
 
         if self.backward_counter % 1000 == 0:
             self.valid_iou()
+
+            for i, L in enumerate(self.time_recorder):
+                self.sw.add_scalar('time', (str(i), L/3600.), self.backward_counter)
 
         self.backward_counter += 1
 

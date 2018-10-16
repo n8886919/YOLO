@@ -53,18 +53,43 @@ class RenderCar():
 
         self.pascal_dataset = {'train':[], 'valid':[]}
 
-        pascal3d_train_path = ssd_path + '/HP_31/pascal3d_image_and_label/car_imagenet_train'
-        pascal3d_valid_path = ssd_path + '/HP_31/pascal3d_image_and_label/car_imagenet_valid'
+        path = os.path.join(ssd_path, 'HP_31/pascal3d_image_and_label')
+        pascal_train_path = os.path.join(path, 'car_imagenet_train')
+        pascal_valid_path = os.path.join(path, 'car_imagenet_valid')
+        self.pascal3d_anno = os.path.join(path, 'car_imagenet_label')
+        '''
+        pascal_path = {
+            'train': os.path.join(path, 'car_imagenet_train')
+            'valid': os.path.join(path, 'car_imagenet_valid')}
 
-        for img in os.listdir(pascal3d_train_path):
-            img_path = os.path.join(pascal3d_train_path, img)
+        self.pascal_dict = {}
+        
+        for data in ['train', 'valid']:
+            for img in os.listdir(pascal_path[data]):
+
+                img_path = os.path.join(pascal_path[dataset], img)
+                ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
+
+                if skip:
+                    continue
+
+                img_cls, label_distribution = self.get_label_distribution(ele, azi)
+
+                self.pascal_dict[data][img] = [
+                    PIL.Image.open(img_path).convert('RGBA'),
+                    box,
+                    img_cls,
+                    label_distribution]
+        '''
+        for img in os.listdir(pascal_train_path):
+            img_path = os.path.join(pascal_train_path, img)
             self.pascal_dataset['train'].append(img_path)
 
-        for img in os.listdir(pascal3d_valid_path):
-            img_path = os.path.join(pascal3d_valid_path, img)
+        for img in os.listdir(pascal_valid_path):
+            img_path = os.path.join(pascal_valid_path, img)
             self.pascal_dataset['valid'].append(img_path)
 
-        self.pascal3d_anno = ssd_path + '/HP_31/pascal3d_image_and_label/car_imagenet_label'
+        
 
     def render(self, bg, mode, pascal=True, render_rate=1.0):
         '''
@@ -105,21 +130,23 @@ class RenderCar():
 
             img_path = dataset[selected[i]]
             if pascal:
+                '''
                 skip = True
                 while skip:
                     ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
                     if not skip:
                         break
-                    img_path = dataset[selected[np.random.randint()]]
+                    img_path = dataset[np.random.randint(len(dataset), size=1)[0]]
 
                 box_l, box_t, box_r, box_b = box
-
+                '''
+                pil_img, box, img_cls, label_distribution = self.pascal_dict[selected[i]]
             else:
                 ele = (float(img_path.split('ele')[1].split('.')[0]) * math.pi) / (100 * 180)
                 azi = (float(img_path.split('azi')[1].split('_')[0]) * math.pi) / (100 * 180)
 
-            img_cls, label_distribution = self.get_label_distribution(ele, azi)
-            pil_img = PIL.Image.open(img_path).convert('RGBA')
+                img_cls, label_distribution = self.get_label_distribution(ele, azi)
+                pil_img = PIL.Image.open(img_path).convert('RGBA')
             #pil_img.show()
             r1 = np.random.uniform(low=0.9, high=1.1)
 

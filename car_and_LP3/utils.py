@@ -4,6 +4,7 @@ import numpy as np
 import sys
 import threading
 import matplotlib.pyplot as plt
+import argparse
 
 import rospy
 from sensor_msgs.msg import Image
@@ -22,6 +23,19 @@ from gluoncv.model_zoo.yolo.yolo3 import _upsample
 sys.path.append('../')
 from modules import basic_yolo
 from modules import utils_cv
+
+
+def Parser():
+    parser = argparse.ArgumentParser(prog="python YOLO.py")
+    parser.add_argument("version", help="v1")
+    parser.add_argument("mode", help="train or valid or video")
+    parser.add_argument("-t", "--topic", help="ros topic to subscribe", dest="topic", default="")
+    parser.add_argument("--radar", help="show radar plot", dest="radar", default=0, type=int)
+    parser.add_argument("--show", help="show processed image", dest="show", default=1, type=int)
+    parser.add_argument("--gpu", help="gpu index", dest="gpu", default="0")
+    parser.parse_args().show = bool(parser.parse_args().show)
+    parser.parse_args().radar = bool(parser.parse_args().radar)
+    return parser.parse_args()
 
 
 class CarLPNet(basic_yolo.BasicYOLONet):

@@ -4,18 +4,25 @@ import mxnet
 from mxnet import nd
 
 nd_inv_sigmoid = lambda x: -nd.log(1/x - 1)
-batch_ndimg_2_cv2img = lambda x: x.transpose((0, 2, 3, 1)).asnumpy()
+
+
+def batch_ndimg_2_cv2img(x):
+    return x.transpose((0, 2, 3, 1)).asnumpy()
 
 
 def load_background(train_or_val, bs, w, h, **kargs):
     path = '/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/HP_31/sun2012_' \
         + train_or_val
+    if train_or_val == 'train':
+        shuffle = True
+    elif train_or_val == 'val':
+        shuffle = False
 
     BG_iter = mxnet.image.ImageIter(
         bs, (3, w, h),
         path_imgrec=path + '.rec',
         path_imgidx=path + '.idx',
-        shuffle=True,
+        shuffle=shuffle,
         pca_noise=0,
         brightness=0.5, saturation=0.5, contrast=0.5, hue=1.0,
         rand_crop=True, rand_resize=True, rand_mirror=True, inter_method=10)
@@ -39,9 +46,10 @@ def split_render_data(img_batch, label_batch, ctx, addLP=0):
 
 
 def init_NN(target, pretrain_weight, ctx):
+    print('\033[1;34m' + pretrain_weight)
+    target.collect_params().load(pretrain_weight, ctx=ctx)
     try:
         target.collect_params().load(pretrain_weight, ctx=ctx)
-        print('\033[7;34m' + pretrain_weight)
     except:
         print('\033[7;31mLoad Pretrain Fail')
         target.initialize(init=mxnet.init.Xavier(), ctx=ctx)

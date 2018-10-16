@@ -33,7 +33,7 @@
     ], # (1, 2, 2)
   LP_slice_point: [1,5],
   ############ Train ############
-  record_step: 3000,
+  record_step: 5000,
   batch_size: 12,
 
 }
