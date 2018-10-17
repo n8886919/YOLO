@@ -28,8 +28,8 @@ else:
 #scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.01, 'box': 1.0}
 scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.1, 'box': 1.0}
 label_mode = ['Dense', 'Sparse']
-exp = datetime.datetime.now().strftime("%m-%dx%H-%M") + '_100' + label_mode[1]
-train_counter = 18010
+exp = datetime.datetime.now().strftime("%m-%dx%H-%M") + '_100' + label_mode[0]
+train_counter = 150010
 
 
 def main():
@@ -92,12 +92,13 @@ class YOLO(Video):
         self.backup_dir = os.path.join(args.version, 'backup')
         backup_list = glob.glob(self.backup_dir+'/*')
 
-
+        print('\033[1;34m')
         if pretrain is None:
             if len(backup_list) != 0:
                 print('Use latest weight')
                 pretrain = max(backup_list, key=os.path.getctime)
             else:
+                print('no pretrain weight')
                 pretrain = 'no pretrain weight'
 
         init_NN(self.net, pretrain, ctx)
@@ -282,7 +283,7 @@ class YOLO(Video):
         self.record_to_tensorboard_and_save(all_gpu_loss[0])
 
     def render_and_train(self):
-        print('\033[1;33;40mRender And Train\033[0m')
+        print('\033[1;32mRender And Train\033[0m')
         # -------------------- show training image # --------------------
         '''
         self.batch_size = 1
@@ -299,7 +300,7 @@ class YOLO(Video):
 
         # -------------------- train -------------------- #
         self.bg_iter_train = load_background('train', self.batch_size, h, w)
-        self.car_renderer = RenderCar(h, w, self.classes, ctx[0])
+        self.car_renderer = RenderCar(h, w, self.classes, ctx[0], pre_load=True)
         '''addLP = AddLP(h, w, self.num_class)'''
 
         # -------------------- main loop -------------------- #
@@ -385,7 +386,10 @@ class YOLO(Video):
             self.valid_iou()
 
             for i, L in enumerate(self.time_recorder):
-                self.sw.add_scalar('time', (str(i), L/3600.), self.backward_counter)
+                self.sw.add_scalar(
+                    'time',
+                    (str(i), L/self.time_recorder[4]/3600.),
+                    self.backward_counter)
 
         self.backward_counter += 1
 
@@ -508,10 +512,10 @@ class YOLO(Video):
 
             if np.random.rand() > 0.5:
                 imgs, labels = car_renderer.render(
-                    bg, 'train', pascal=False, render_rate=0.7)
+                    bg, 'valid', pascal=False, render_rate=0.7)
             else:
                 imgs, labels = car_renderer.render(
-                    bg, 'train', pascal=True, render_rate=0.7)
+                    bg, 'valid', pascal=True, render_rate=0.7)
             #img, label = addLP.add(img, label)
             imgs = nd.clip(imgs, 0, 1)
 

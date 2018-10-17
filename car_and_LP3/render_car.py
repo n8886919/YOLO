@@ -14,82 +14,88 @@ import PIL
 sys.path.append('../')
 from modules import pil_image_enhancement
 
-rad_2_deg = lambda rad: rad * 180. / math.pi
-deg_2_rad = lambda deg: deg * math.pi / 180.
+
+def rad_2_deg(rad):
+    return rad * 180. / math.pi
+
+
+def deg_2_rad(deg):
+    return deg * math.pi / 180.
 
 
 class RenderCar():
-    def __init__(self, img_h, img_w, classes, ctx):
+    def __init__(self, img_h, img_w, classes, ctx, pre_load=False):
         #self.bs = batch_size
         self.h = img_h
         self.w = img_w
+        self.num_cls = len(classes)
         self.ele_label = np.array(classes)[:, 1]
         self.azi_label = np.array(classes)[:, 0]
         self.ctx = ctx
-        self.BIL = PIL.Image.BILINEAR
-        self.num_cls = len(classes)
+        self.pre_load = pre_load
 
+        self.BIL = PIL.Image.BILINEAR
+
+        # -------------------- init image enhencement -------------------- #
         self.pil_image_enhance = pil_image_enhancement.PILImageEnhance(
             M=0, N=0, R=30.0, G=0.3, noise_var=0)
         self.augs = mxnet.image.CreateAugmenter(
             data_shape=(3, img_h, img_w), inter_method=10, pca_noise=0.1,
             brightness=0.5, contrast=0.5, saturation=0.5, hue=1.0)
 
-        self.rawcar_dataset = {'train': [], 'valid': []}
         ssd_path = '/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888'
 
-        raw_car_train_path = ssd_path + '/no_label_car_raw_images/100/train'
-        raw_car_valid_path = ssd_path + '/no_label_car_raw_images/100/valid'
+        # -------------------- load png image and path-------------------- #
+        path = os.path.join(ssd_path, 'no_label_car_raw_images/100')
+        cad_path = {
+            'train': os.path.join(path, 'train'),
+            'valid': os.path.join(path, 'valid')}
 
-        for file in os.listdir(raw_car_train_path):
-            for img in os.listdir(os.path.join(raw_car_train_path, file)):
-                img_path = os.path.join(raw_car_train_path, file, img)
-                self.rawcar_dataset['train'].append(img_path)
+        self.rawcar_dataset = {'train': [], 'valid': []}
+        for data in ['train', 'valid']:
+            for cad in os.listdir(cad_path[data]):
+                for img in os.listdir(os.path.join(cad_path[data], cad)):
+                    img_path = os.path.join(cad_path[data], cad, img)
+                    self.rawcar_dataset[data].append(img_path)
 
-        for file in os.listdir(raw_car_valid_path):
-            for img in os.listdir(os.path.join(raw_car_valid_path, file)):
-                img_path = os.path.join(raw_car_valid_path, file, img)
-                self.rawcar_dataset['valid'].append(img_path)
-
-        self.pascal_dataset = {'train':[], 'valid':[]}
-
+        # -------------------- set pascal path-------------------- #
         path = os.path.join(ssd_path, 'HP_31/pascal3d_image_and_label')
-        pascal_train_path = os.path.join(path, 'car_imagenet_train')
-        pascal_valid_path = os.path.join(path, 'car_imagenet_valid')
-        self.pascal3d_anno = os.path.join(path, 'car_imagenet_label')
-        '''
+
+        label_path = os.path.join(path, 'car_imagenet_label')
         pascal_path = {
-            'train': os.path.join(path, 'car_imagenet_train')
+            'train': os.path.join(path, 'car_imagenet_train'),
             'valid': os.path.join(path, 'car_imagenet_valid')}
 
-        self.pascal_dict = {}
-        
-        for data in ['train', 'valid']:
-            for img in os.listdir(pascal_path[data]):
+        # -------------------- load pascal label -------------------- #
+        self.pascal3d_anno = {}
+        for f in os.listdir(label_path):
+            self.pascal3d_anno[f] = sio.loadmat(os.path.join(label_path, f))
 
-                img_path = os.path.join(pascal_path[dataset], img)
-                ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
+        # -------------------- load pascal image -------------------- #
+        if pre_load:
+            print('\033[1;34mLoading pascal images to RAM')
+            self.pascal_dataset = {'train': {}, 'valid': {}}
+            for data in self.pascal_dataset:
+                for img in os.listdir(pascal_path[data]):
+                    img_path = os.path.join(pascal_path[data], img)
+                    ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
+                    if skip:
+                        continue
 
-                if skip:
-                    continue
+                    img_cls, label_distribution = self.get_label_distribution(ele, azi)
+                    self.pascal_dataset[data][img] = [
+                        PIL.Image.open(img_path).convert('RGBA'),
+                        box,
+                        img_cls,
+                        label_distribution]
+            print('\033[1;34mDone')
 
-                img_cls, label_distribution = self.get_label_distribution(ele, azi)
-
-                self.pascal_dict[data][img] = [
-                    PIL.Image.open(img_path).convert('RGBA'),
-                    box,
-                    img_cls,
-                    label_distribution]
-        '''
-        for img in os.listdir(pascal_train_path):
-            img_path = os.path.join(pascal_train_path, img)
-            self.pascal_dataset['train'].append(img_path)
-
-        for img in os.listdir(pascal_valid_path):
-            img_path = os.path.join(pascal_valid_path, img)
-            self.pascal_dataset['valid'].append(img_path)
-
-        
+        else:
+            self.pascal_dataset = {'train': [], 'valid': []}
+            for data in self.pascal_dataset:
+                for img in os.listdir(pascal_path[data]):
+                    img_path = os.path.join(pascal_path[data], img)
+                    self.pascal_dataset[data].append(img_path)
 
     def render(self, bg, mode, pascal=True, render_rate=1.0):
         '''
@@ -112,96 +118,24 @@ class RenderCar():
         label_batch: mxnet.ndarray(3D)
           bs * object * [cls, y(0~1), x(0~1), h(0~1), w(0~1), r(+-pi), all labels prob]
         '''
-        if pascal:
-            dataset = self.pascal_dataset[mode]
-        else:
-            dataset = self.rawcar_dataset[mode]
-
         bs = len(bg)
         ctx = self.ctx
         label_batch = nd.ones((bs, 1, 6+self.num_cls), ctx=ctx) * (-1)
         img_batch = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
         mask = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
-        selected = np.random.randint(len(dataset), size=bs)
 
         for i in range(bs):
             if np.random.rand() > render_rate:
                 continue
 
-            img_path = dataset[selected[i]]
-            if pascal:
-                '''
-                skip = True
-                while skip:
-                    ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
-                    if not skip:
-                        break
-                    img_path = dataset[np.random.randint(len(dataset), size=1)[0]]
-
-                box_l, box_t, box_r, box_b = box
-                '''
-                pil_img, box, img_cls, label_distribution = self.pascal_dict[selected[i]]
-            else:
-                ele = (float(img_path.split('ele')[1].split('.')[0]) * math.pi) / (100 * 180)
-                azi = (float(img_path.split('azi')[1].split('_')[0]) * math.pi) / (100 * 180)
-
-                img_cls, label_distribution = self.get_label_distribution(ele, azi)
-                pil_img = PIL.Image.open(img_path).convert('RGBA')
-            #pil_img.show()
             r1 = np.random.uniform(low=0.9, high=1.1)
-
             if pascal:
-                box_w = box_r - box_l
-                box_h = (box_b - box_t) * r1
-
-                w_max_scale = 0.9*self.w / box_w
-                h_max_scale = 0.9*self.h / box_h
-                max_scale = min(w_max_scale, h_max_scale)
-
-                w_min_scale = 0.2*self.w / float(box_w)
-                h_min_scale = 0.2*self.h / float(box_h)
-                min_scale = max(w_min_scale, h_min_scale)
+                pil_img, r_box_l, r_box_t, r_box_r, r_box_b, r, \
+                    img_cls, label_distribution = self._render_pascal(mode, r1)
 
             else:
-                min_scale = 0.25
-                max_scale = 1.0
-            # -------------------- resize -------------------- #
-            resize = np.random.uniform(low=min_scale, high=max_scale)
-            resize_w = resize * pil_img.size[0]
-            resize_h = resize * pil_img.size[1] * r1
-            pil_img = pil_img.resize((int(resize_w), int(resize_h)), self.BIL)
-            # -------------------- resize -------------------- #
-            if pascal:
-                box_w = resize * box_w
-                box_h = resize * box_h * r1
-
-                pil_img, r = self.pil_image_enhance(pil_img, R=0)
-
-                box_l2 = box_l * resize - 0.5 * resize_w
-                box_r2 = box_r * resize - 0.5 * resize_w
-                box_t2 = box_t * resize * r1 - 0.5 * resize_h
-                box_b2 = box_b * resize * r1 - 0.5 * resize_h
-                # box_x2 means origin at image center
-
-                new_corner = []
-                for x in [box_l2, box_r2]:
-                    for y in [box_t2, box_b2]:
-                        rotated_corner = [x*math.cos(r)-y*math.sin(r), y*math.cos(r)+x*math.sin(r)]
-                        new_corner.append(rotated_corner)
-
-                r_resize_w = abs(resize_h * math.sin(r)) + abs(resize_w * math.cos(r))
-                r_resize_h = abs(resize_h * math.cos(r)) + abs(resize_w * math.sin(r))
-
-                offset = np.array([r_resize_w, r_resize_h]) * 0.5
-                r_box_l, r_box_t = np.amin(new_corner, axis=0) + offset
-                r_box_r, r_box_b = np.amax(new_corner, axis=0) + offset
-
-            else:
-                box_l, box_t, box_r, box_b = pil_img.getbbox()
-                box_w = box_r - box_l
-                box_h = box_b - box_t
-                pil_img, r = self.pil_image_enhance(pil_img)
-                r_box_l, r_box_t, r_box_r, r_box_b = pil_img.getbbox()
+                pil_img, r_box_l, r_box_t, r_box_r, r_box_b, r, \
+                    img_cls, label_distribution = self._render_png(mode, r1)
 
             r_box_w = r_box_r - r_box_l  # r_box_xx means after rotate
             r_box_h = r_box_b - r_box_t  # r_box_xx means after rotate
@@ -215,8 +149,11 @@ class RenderCar():
                 low=int(-r_box_t-0.3*r_box_h),
                 high=int(self.h-r_box_t-0.7*r_box_h))
 
-            box_x = (r_box_r + r_box_l)/2. + paste_x
             box_y = (r_box_b + r_box_t)/2. + paste_y
+            box_x = (r_box_r + r_box_l)/2. + paste_x
+            box_h = float(r_box_b - r_box_t)
+            box_w = float(r_box_r - r_box_l)
+
             # -------------------- -------------------- #
             tmp = PIL.Image.new('RGBA', (self.w, self.h))
             tmp.paste(pil_img, (paste_x, paste_y))
@@ -235,11 +172,9 @@ class RenderCar():
 
             label = nd.array([[
                 img_cls,
-                float(box_y)/self.h,
-                float(box_x)/self.w,
-                float(box_h)/self.h,
-                float(box_w)/self.w,
-                r]])
+                box_y/self.h, box_x/self.w,
+                box_h/self.h, box_w/self.w, r]])
+
             label = nd.concat(label, label_distribution, dim=-1)
             label_batch[i] = label
         ####################################################################
@@ -247,7 +182,99 @@ class RenderCar():
         img_batch = nd.clip(img_batch, 0, 1)
         # 0~1 (batch_size, channels, h, w)
         return img_batch, label_batch
-        ####################################################################
+
+    def _render_pascal(self, mode, r1=1.0):
+        if self.pre_load:
+            n = np.random.randint(len(self.pascal_dataset[mode]))
+            n = self.pascal_dataset[mode].keys()[n]
+            pil_img, box, img_cls, \
+                label_distribution = self.pascal_dataset[mode][n]
+
+        else:
+            skip = True
+            while skip:
+                n = np.random.randint(len(self.pascal_dataset[mode]))
+                img_path = self.pascal_dataset[mode][n]
+                ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
+                if not skip:
+                    break
+
+            img_cls, label_distribution = self.get_label_distribution(ele, azi)
+            pil_img = PIL.Image.open(img_path).convert('RGBA')
+
+        box_l, box_t, box_r, box_b = box
+
+        box_w = box_r - box_l
+        box_h = (box_b - box_t) * r1
+
+        w_max_scale = 0.9*self.w / box_w
+        h_max_scale = 0.9*self.h / box_h
+
+        w_min_scale = 0.2*self.w / float(box_w)
+        h_min_scale = 0.2*self.h / float(box_h)
+
+        max_scale = min(w_max_scale, h_max_scale)
+        min_scale = max(w_min_scale, h_min_scale)
+
+        resize, resize_w, resize_h, pil_img = self._resize(
+            pil_img, min_scale, max_scale, r1)
+
+        box_w = resize * box_w
+        box_h = resize * box_h * r1
+
+        pil_img, r = self.pil_image_enhance(pil_img, R=0)
+
+        box_l2 = box_l * resize - 0.5 * resize_w
+        box_r2 = box_r * resize - 0.5 * resize_w
+        box_t2 = box_t * resize * r1 - 0.5 * resize_h
+        box_b2 = box_b * resize * r1 - 0.5 * resize_h
+        # box_x2 means origin at image center
+
+        new_corner = []
+        for x in [box_l2, box_r2]:
+            for y in [box_t2, box_b2]:
+                rotated_corner = [x*math.cos(r)-y*math.sin(r), y*math.cos(r)+x*math.sin(r)]
+                new_corner.append(rotated_corner)
+
+        r_resize_w = abs(resize_h * math.sin(r)) + abs(resize_w * math.cos(r))
+        r_resize_h = abs(resize_h * math.cos(r)) + abs(resize_w * math.sin(r))
+
+        offset = np.array([r_resize_w, r_resize_h]) * 0.5
+        r_box_l, r_box_t = np.amin(new_corner, axis=0) + offset
+        r_box_r, r_box_b = np.amax(new_corner, axis=0) + offset
+
+        return pil_img, r_box_l, r_box_t, r_box_r, r_box_b, r, img_cls, label_distribution
+
+    def _render_png(self, mode, r1=1.0):
+        n = np.random.randint(len(self.rawcar_dataset[mode]))
+        img_path = self.rawcar_dataset[mode][n]
+
+        ele = (float(img_path.split('ele')[1].split('.')[0]) * math.pi) / (100 * 180)
+        azi = (float(img_path.split('azi')[1].split('_')[0]) * math.pi) / (100 * 180)
+        img_cls, label_distribution = self.get_label_distribution(ele, azi)
+        pil_img = PIL.Image.open(img_path).convert('RGBA')
+
+        min_scale = 0.25
+        max_scale = 1.0
+
+        resize, resize_w, resize_h, pil_img = self._resize(
+            pil_img, min_scale, max_scale, r1)
+
+        box_l, box_t, box_r, box_b = pil_img.getbbox()
+        box_w = box_r - box_l
+        box_h = box_b - box_t
+        pil_img, r = self.pil_image_enhance(pil_img)
+        r_box_l, r_box_t, r_box_r, r_box_b = pil_img.getbbox()
+
+        return pil_img, r_box_l, r_box_t, r_box_r, r_box_b, r, img_cls, label_distribution
+
+    def _resize(self, pil_img, min_scale, max_scale, r1):
+        resize = np.random.uniform(low=min_scale, high=max_scale)
+        resize_w = resize * pil_img.size[0]
+        resize_h = resize * pil_img.size[1] * r1
+        pil_img = pil_img.resize((int(resize_w), int(resize_h)), self.BIL)
+
+        return resize, resize_w, resize_h, pil_img
 
     def get_label_distribution(self, ele, azi, sigma=0.1):
         ''' Reference: https://en.wikipedia.org/wiki/Great-circle_distance
@@ -280,7 +307,8 @@ class RenderCar():
 
     def get_pascal3d_label(self, img_path, num_cls):
         f = img_path.split('/')[-1].split('.')[0]+'.mat'
-        mat = sio.loadmat(os.path.join(self.pascal3d_anno, f))
+        #mat = sio.loadmat(os.path.join(self.pascal3d_anno, f))
+        mat = self.pascal3d_anno[f]
         mat = mat['record'][0][0]
 
         skip = False
@@ -319,7 +347,8 @@ class RenderCar():
         f = img_path.split('/')[-1].split('.')[0]+'.mat'
         # mat = sio.loadmat('/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/
         #                   HP_31/pascal3d_image_and_label/car_imagenet_label/n03770085_6172.mat')
-        mat = sio.loadmat(os.path.join(self.pascal3d_anno, f))
+        #mat = sio.loadmat(os.path.join(self.pascal3d_anno, f))
+        mat = self.pascal3d_anno[f]
         mat = mat['record'][0][0][1][0]
 
         # if more then one car in an image, do not use it, so skip

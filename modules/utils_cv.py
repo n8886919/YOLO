@@ -81,7 +81,7 @@ class RadarProb():
                 #bar.set_alpha(0.5)
 
             c += num_ang
-        self.ax.set_title(str(confidence), bbox=dict(facecolor='g', alpha=0.2 ))
+        self.ax.set_title(str(confidence), bbox=dict(facecolor='g', alpha=0.2))
         self.ax.grid(False)
 
         plt.pause(0.001)

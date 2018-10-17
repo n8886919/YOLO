@@ -46,7 +46,7 @@ def split_render_data(img_batch, label_batch, ctx, addLP=0):
 
 
 def init_NN(target, pretrain_weight, ctx):
-    print('\033[1;34m' + pretrain_weight)
+    print(pretrain_weight)
     target.collect_params().load(pretrain_weight, ctx=ctx)
     try:
         target.collect_params().load(pretrain_weight, ctx=ctx)
