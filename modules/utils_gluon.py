@@ -11,7 +11,7 @@ def batch_ndimg_2_cv2img(x):
 
 
 def load_background(train_or_val, bs, w, h, **kargs):
-    path = '/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/HP_31/sun2012_' \
+    path = '/media/nolan/SSD1/HP_31/sun2012_' \
         + train_or_val
     if train_or_val == 'train':
         shuffle = True

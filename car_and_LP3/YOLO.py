@@ -29,11 +29,12 @@ else:
 scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.1, 'box': 1.0}
 label_mode = ['Dense', 'Sparse']
 exp = datetime.datetime.now().strftime("%m-%dx%H-%M") + '_100' + label_mode[0]
-train_counter = 150010
+train_counter = 339010
+learning_rate = 0.00001
 
 
 def main():
-    yolo = YOLO()
+    yolo = YOLO('/home/nolan/Desktop/YOLO/car_and_LP3/v1/backup/10-17x16-13_100Denseiter_56')
 
     if args.mode == 'train':
         yolo.render_and_train()
@@ -126,7 +127,7 @@ class YOLO(Video):
         self.trainer = gluon.Trainer(
             self.net.collect_params(),
             'adam',
-            {'learning_rate': 0.0001})
+            {'learning_rate': learning_rate})
 
         logdir = args.version+'/logs'
         self.sw = SummaryWriter(logdir=logdir, verbose=False)
@@ -397,6 +398,7 @@ class YOLO(Video):
             idx = self.backward_counter//self.record_step
             save_model = os.path.join(self.backup_dir, exp + 'iter' + '_%d' % idx)
             self.net.collect_params().save(save_model)
+
 
     def _init_valid(self):
         size = self.size

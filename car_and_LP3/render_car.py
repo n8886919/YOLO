@@ -14,6 +14,8 @@ import PIL
 sys.path.append('../')
 from modules import pil_image_enhancement
 
+join = os.path.join
+
 
 def rad_2_deg(rad):
     return rad * 180. / math.pi
@@ -25,7 +27,6 @@ def deg_2_rad(deg):
 
 class RenderCar():
     def __init__(self, img_h, img_w, classes, ctx, pre_load=False):
-        #self.bs = batch_size
         self.h = img_h
         self.w = img_w
         self.num_cls = len(classes)
@@ -35,7 +36,7 @@ class RenderCar():
         self.pre_load = pre_load
 
         self.BIL = PIL.Image.BILINEAR
-
+        self.disk = '/media/nolan/SSD1'
         # -------------------- init image enhencement -------------------- #
         self.pil_image_enhance = pil_image_enhancement.PILImageEnhance(
             M=0, N=0, R=30.0, G=0.3, noise_var=0)
@@ -43,58 +44,110 @@ class RenderCar():
             data_shape=(3, img_h, img_w), inter_method=10, pca_noise=0.1,
             brightness=0.5, contrast=0.5, saturation=0.5, hue=1.0)
 
-        ssd_path = '/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888'
+        self.load_png_images()
+        self.load_mtv_images()
+        self.load_pascal_images()
 
+    def load_mtv_images(self):
+        self.mtv_dataset = []
+        mtv_txt = []
+        path = join(self.disk, 'muti_view_car')
+
+        with open(join(path, 'tripod-seq.txt'), 'r') as f:
+            mtv_txt = f.readlines()
+
+        with open(join(path, 'times.txt'), 'r') as f:
+            times = f.readlines()
+
+        for i, seq_times in enumerate(times):
+            seq_times = seq_times.split(' ')[:-1]  # [-1] is \n
+            times[i] = map(int, seq_times)
+
+        cycle_frame = map(int, mtv_txt[4].split(' '))
+
+        num_seqs = len(mtv_txt[1].split(' '))
+        for i in range(num_seqs):
+            d_ang = 360. / times[i][cycle_frame[i]-1]  # d_ang / d_t
+            d_ang *= int(mtv_txt[6].split(' ')[i])  # rotattion direction
+            # cycle_frame[i]-1 to match list index
+            # times[0][3] correspond to  time of tripod_seq_1_4.jpg
+
+            front_frame_idx = int(mtv_txt[5].split(' ')[i])
+            front_time = times[i][front_frame_idx - 1]
+            ang_start = - d_ang * front_time
+
+            box_file = join(path, mtv_txt[3] % (i+1))[:-1]
+            # because mtv_txt[3][-1] is \n, remove!
+            box_file = np.loadtxt(box_file)
+            num_images = int(mtv_txt[4].split(' ')[i])
+            for j in range(num_images):
+                img_name = 'tripod_seq_%02d_%03d.jpg' % (i+1, j+1)
+                # seq and frame number are start from 1, so (i, j) += 1
+                img_path = join(path, img_name)
+                box = box_file[j]
+                frame_time = times[i][j]
+                azi = ang_start + frame_time * d_ang
+                img_cls, label_distribution = self.get_label_dist(0, azi)
+                pil_img = PIL.Image.open(img_path).convert('RGBA')
+                self.mtv_dataset.append([
+                    pil_img,
+                    box,
+                    img_cls,
+                    label_distribution])
+            break
+
+    def load_png_images(self):
         # -------------------- load png image and path-------------------- #
-        path = os.path.join(ssd_path, 'no_label_car_raw_images/100')
+        path = join(self.disk, 'no_label_car_raw_images/500')
         cad_path = {
-            'train': os.path.join(path, 'train'),
-            'valid': os.path.join(path, 'valid')}
+            'train': join(path, 'train'),
+            'valid': join(path, 'valid')}
 
         self.rawcar_dataset = {'train': [], 'valid': []}
         for data in ['train', 'valid']:
             for cad in os.listdir(cad_path[data]):
-                for img in os.listdir(os.path.join(cad_path[data], cad)):
-                    img_path = os.path.join(cad_path[data], cad, img)
+                for img in os.listdir(join(cad_path[data], cad)):
+                    img_path = join(cad_path[data], cad, img)
                     self.rawcar_dataset[data].append(img_path)
 
+    def load_pascal_images(self):
         # -------------------- set pascal path-------------------- #
-        path = os.path.join(ssd_path, 'HP_31/pascal3d_image_and_label')
-
-        label_path = os.path.join(path, 'car_imagenet_label')
+        path = join(self.disk, 'HP_31/pascal3d_image_and_label')
+        label_path = join(path, 'car_imagenet_label')
         pascal_path = {
-            'train': os.path.join(path, 'car_imagenet_train'),
-            'valid': os.path.join(path, 'car_imagenet_valid')}
+            'train': join(path, 'car_imagenet_train'),
+            'valid': join(path, 'car_imagenet_valid')}
 
         # -------------------- load pascal label -------------------- #
         self.pascal3d_anno = {}
         for f in os.listdir(label_path):
-            self.pascal3d_anno[f] = sio.loadmat(os.path.join(label_path, f))
+            self.pascal3d_anno[f] = sio.loadmat(join(label_path, f))
 
         # -------------------- load pascal image -------------------- #
-        if pre_load:
+        if self.pre_load:
             print('\033[1;34mLoading pascal images to RAM')
             self.pascal_dataset = {'train': {}, 'valid': {}}
             for data in self.pascal_dataset:
                 for img in os.listdir(pascal_path[data]):
-                    img_path = os.path.join(pascal_path[data], img)
+                    img_path = join(pascal_path[data], img)
                     ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
                     if skip:
                         continue
 
-                    img_cls, label_distribution = self.get_label_distribution(ele, azi)
+                    img_cls, label_distribution = self.get_label_dist(ele, azi)
                     self.pascal_dataset[data][img] = [
                         PIL.Image.open(img_path).convert('RGBA'),
                         box,
                         img_cls,
                         label_distribution]
+
             print('\033[1;34mDone')
 
         else:
             self.pascal_dataset = {'train': [], 'valid': []}
             for data in self.pascal_dataset:
                 for img in os.listdir(pascal_path[data]):
-                    img_path = os.path.join(pascal_path[data], img)
+                    img_path = join(pascal_path[data], img)
                     self.pascal_dataset[data].append(img_path)
 
     def render(self, bg, mode, pascal=True, render_rate=1.0):
@@ -183,7 +236,7 @@ class RenderCar():
         # 0~1 (batch_size, channels, h, w)
         return img_batch, label_batch
 
-    def _render_pascal(self, mode, r1=1.0):
+    def _render_pascal(self, mode, r1=1.0, pre_load=False):
         if self.pre_load:
             n = np.random.randint(len(self.pascal_dataset[mode]))
             n = self.pascal_dataset[mode].keys()[n]
@@ -199,7 +252,7 @@ class RenderCar():
                 if not skip:
                     break
 
-            img_cls, label_distribution = self.get_label_distribution(ele, azi)
+            img_cls, label_distribution = self.get_label_dist(ele, azi)
             pil_img = PIL.Image.open(img_path).convert('RGBA')
 
         box_l, box_t, box_r, box_b = box
@@ -207,11 +260,11 @@ class RenderCar():
         box_w = box_r - box_l
         box_h = (box_b - box_t) * r1
 
-        w_max_scale = 0.9*self.w / box_w
-        h_max_scale = 0.9*self.h / box_h
+        w_max_scale = 0.9 * self.w / box_w
+        h_max_scale = 0.9 * self.h / box_h
 
-        w_min_scale = 0.2*self.w / float(box_w)
-        h_min_scale = 0.2*self.h / float(box_h)
+        w_min_scale = 0.3 * self.w / float(box_w)
+        h_min_scale = 0.3 * self.h / float(box_h)
 
         max_scale = min(w_max_scale, h_max_scale)
         min_scale = max(w_min_scale, h_min_scale)
@@ -251,10 +304,10 @@ class RenderCar():
 
         ele = (float(img_path.split('ele')[1].split('.')[0]) * math.pi) / (100 * 180)
         azi = (float(img_path.split('azi')[1].split('_')[0]) * math.pi) / (100 * 180)
-        img_cls, label_distribution = self.get_label_distribution(ele, azi)
+        img_cls, label_distribution = self.get_label_dist(ele, azi)
         pil_img = PIL.Image.open(img_path).convert('RGBA')
 
-        min_scale = 0.25
+        min_scale = 0.3
         max_scale = 1.0
 
         resize, resize_w, resize_h, pil_img = self._resize(
@@ -266,7 +319,8 @@ class RenderCar():
         pil_img, r = self.pil_image_enhance(pil_img)
         r_box_l, r_box_t, r_box_r, r_box_b = pil_img.getbbox()
 
-        return pil_img, r_box_l, r_box_t, r_box_r, r_box_b, r, img_cls, label_distribution
+        return (pil_img, r_box_l, r_box_t, r_box_r, r_box_b,
+                r, img_cls, label_distribution)
 
     def _resize(self, pil_img, min_scale, max_scale, r1):
         resize = np.random.uniform(low=min_scale, high=max_scale)
@@ -276,7 +330,7 @@ class RenderCar():
 
         return resize, resize_w, resize_h, pil_img
 
-    def get_label_distribution(self, ele, azi, sigma=0.1):
+    def get_label_dist(self, ele, azi, sigma=0.1):
         ''' Reference: https://en.wikipedia.org/wiki/Great-circle_distance
         Parameters
         ----------
@@ -307,7 +361,7 @@ class RenderCar():
 
     def get_pascal3d_label(self, img_path, num_cls):
         f = img_path.split('/')[-1].split('.')[0]+'.mat'
-        #mat = sio.loadmat(os.path.join(self.pascal3d_anno, f))
+        #mat = sio.loadmat(join(self.pascal3d_anno, f))
         mat = self.pascal3d_anno[f]
         mat = mat['record'][0][0]
 
@@ -345,9 +399,9 @@ class RenderCar():
 
     def get_pascal3d_azi_ele(self, img_path):
         f = img_path.split('/')[-1].split('.')[0]+'.mat'
-        # mat = sio.loadmat('/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/
+        # mat = sio.loadmat('/media/nolan/SSD1/
         #                   HP_31/pascal3d_image_and_label/car_imagenet_label/n03770085_6172.mat')
-        #mat = sio.loadmat(os.path.join(self.pascal3d_anno, f))
+        #mat = sio.loadmat(join(self.pascal3d_anno, f))
         mat = self.pascal3d_anno[f]
         mat = mat['record'][0][0][1][0]
 
@@ -377,8 +431,8 @@ class RenderCar():
         t = time.time()
         background_iter = mxnet.image.ImageIter(
             self.bs, (3, self.h, self.w),
-            path_imgrec='/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/HP_31/sun2012_val.rec',
-            path_imgidx='/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/HP_31/sun2012_val.idx',
+            path_imgrec='/media/nolan/SSD1/HP_31/sun2012_val.rec',
+            path_imgidx='/media/nolan/SSD1/HP_31/sun2012_val.idx',
             shuffle=True, pca_noise=0,
             brightness=0.5, saturation=0.5, contrast=0.5, hue=1.0,
             rand_crop=True, rand_resize=True, rand_mirror=True, inter_method=10

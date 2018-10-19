@@ -123,7 +123,7 @@ class LP():
         L_box = nd.zeros((bs, a0, n, 4), ctx=ctx[gpu_index])
         L_mask = nd.zeros((bs, a0, n, 1), ctx=ctx[gpu_index])
 
-        for b in range(bs): 
+        for b in range(bs):
             label = labels[b]
             #nd.random.shuffle(label)
             for L in label: # all object in the image
@@ -134,13 +134,11 @@ class LP():
                     L_score[b, px, anc, :] = 1.0 # others are zero
                     L_box[b, px, anc, :] = box
 
-                    
         return [C_score, C_box, C_class], C_mask
 
 '''
 class YOLO(Video):
     def __init__(self, pretrain):
-        
         self.version = args.version
         with open(os.path.join(self.version, 'spec.yaml')) as f:
             spec = yaml.load(f)
@@ -150,13 +148,10 @@ class YOLO(Video):
         self.all_anchors = nd.array(spec['anchors'])
 
         ################################################################
-        
-        
         #self.loss_name = ['score', 'box', 'class']
         self.loss_name = ['score', 'box', 'rotate', 'class']
-        
-        ################################################################
 
+        ################################################################
         num_downsample = len(spec['layers']) # number of downsample
         num_prymaid_layers = len(self.all_anchors)# number of pyrmaid layers
         prymaid_start = num_downsample - num_prymaid_layers + 1
@@ -171,7 +166,7 @@ class YOLO(Video):
         self.backup_dir = os.path.join(self.version, 'backup')
         self.net = CarLPNet(spec, num_sync_bn_devices=len(ctx))
         #init_NN(self.net, os.path.join(self.backup_dir, pretrain), ctx)
-        init_NN(self.net, '/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/car_and_LP2_backup/iter_107000', ctx)
+        init_NN(self.net, '/media/nolan/SSD1/car_and_LP2_backup/iter_107000', ctx)
         if args.mode == 'train':
             self.record_step = spec['record_step']
             self.batch_size = spec['batch_size'] * len(ctx)
@@ -209,9 +204,9 @@ class YOLO(Video):
 
         if not os.path.exists(self.backup_dir): 
             os.makedirs(self.backup_dir)
-    
+
     def get_default_ltrb(self): 
-        LTRB = [] #nd.zeros((sum(self.area),n,4))
+        LTRB = []  #nd.zeros((sum(self.area),n,4))
         size = self.size
         a_start = 0
         for i, anchors in enumerate(self.all_anchors): # [12*16,6*8,3*4]
@@ -242,20 +237,19 @@ class YOLO(Video):
 
         LTRB = nd.concat(*LTRB, dim=0)
         self.all_anchors_ltrb = [LTRB.copyto(device) for device in ctx]
-    
+
     def find_best(self, L, gpu_index):
         anc_ltrb = self.all_anchors_ltrb[gpu_index][:]
         IOUs = get_iou(anc_ltrb, L, mode=2)
-        best_match = int(IOUs.reshape(-1).argmax(axis=0).asnumpy()[0]) #print(best_match)
-        best_pixel = int(best_match//len(self.all_anchors[0])) 
-        best_anchor = int(best_match%len(self.all_anchors[0]))
+        best_match = int(IOUs.reshape(-1).argmax(axis=0).asnumpy()[0])
+        best_pixel = int(best_match//len(self.all_anchors[0]))
+        best_anchor = int(best_match % len(self.all_anchors[0]))
 
         best_ltrb = self.all_anchors_ltrb[gpu_index][best_pixel, best_anchor].reshape(-1)
 
         assert best_pixel < self.area[0] + self.area[1] + self.area[2], (
             "best_pixel < sum(area), given {} vs {}".format(
                 best_pixel, sum(self.area)))
-        
         a0 = 0
         for i, a in enumerate(self.area):
             a0 += a
