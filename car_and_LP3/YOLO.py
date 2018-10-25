@@ -29,12 +29,12 @@ else:
 scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.1, 'box': 1.0}
 label_mode = ['Dense', 'Sparse']
 exp = datetime.datetime.now().strftime("%m-%dx%H-%M") + '_100' + label_mode[0]
-train_counter = 339010
+train_counter = 449010
 learning_rate = 0.00001
 
 
 def main():
-    yolo = YOLO('/home/nolan/Desktop/YOLO/car_and_LP3/v1/backup/10-17x16-13_100Denseiter_56')
+    yolo = YOLO()
 
     if args.mode == 'train':
         yolo.render_and_train()
@@ -301,7 +301,7 @@ class YOLO(Video):
 
         # -------------------- train -------------------- #
         self.bg_iter_train = load_background('train', self.batch_size, h, w)
-        self.car_renderer = RenderCar(h, w, self.classes, ctx[0], pre_load=True)
+        self.car_renderer = RenderCar(h, w, self.classes, ctx[0], pre_load=False)
         '''addLP = AddLP(h, w, self.num_class)'''
 
         # -------------------- main loop -------------------- #
@@ -365,7 +365,7 @@ class YOLO(Video):
             mean_iou = iou_sum.asnumpy() / float(self.iou_bs * c)
             self.sw.add_scalar(
                 'Mean_IOU',
-                (exp + 'PASCAL %r' % pascal , mean_iou),
+                (exp + 'PASCAL %r' % pascal, mean_iou),
                 self.backward_counter)
 
             self.bg_iter_valid.reset()
@@ -389,7 +389,7 @@ class YOLO(Video):
             for i, L in enumerate(self.time_recorder):
                 self.sw.add_scalar(
                     'time',
-                    (str(i), L/self.time_recorder[4]/3600.),
+                    (str(i), L/3600.),
                     self.backward_counter)
 
         self.backward_counter += 1
@@ -398,7 +398,6 @@ class YOLO(Video):
             idx = self.backward_counter//self.record_step
             save_model = os.path.join(self.backup_dir, exp + 'iter' + '_%d' % idx)
             self.net.collect_params().save(save_model)
-
 
     def _init_valid(self):
         size = self.size

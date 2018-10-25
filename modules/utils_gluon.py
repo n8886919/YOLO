@@ -47,11 +47,10 @@ def split_render_data(img_batch, label_batch, ctx, addLP=0):
 
 def init_NN(target, pretrain_weight, ctx):
     print(pretrain_weight)
-    target.collect_params().load(pretrain_weight, ctx=ctx)
     try:
         target.collect_params().load(pretrain_weight, ctx=ctx)
     except:
-        print('\033[7;31mLoad Pretrain Fail')
+        print('\033[1;31mLoad Pretrain Fail')
         target.initialize(init=mxnet.init.Xavier(), ctx=ctx)
     finally:
         target.hybridize()
