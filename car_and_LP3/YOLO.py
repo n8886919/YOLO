@@ -5,6 +5,7 @@ import sys
 import yaml
 import datetime
 
+import mxnet as mx
 from mxnet import gluon
 from mxboard import SummaryWriter
 
@@ -28,10 +29,11 @@ else:
 #scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.01, 'box': 1.0}
 scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.1, 'box': 1.0}
 label_mode = ['Dense', 'Sparse']
-exp = datetime.datetime.now().strftime("%m-%dx%H-%M") + '_100' + label_mode[0]
-train_counter = 449010
-learning_rate = 0.00001
 
+train_counter = 0
+learning_rate = 0.001
+mp = False
+exp = datetime.datetime.now().strftime("%m-%dx%H-%M") + '_500' + label_mode[0]
 
 def main():
     yolo = YOLO()
@@ -124,11 +126,16 @@ class YOLO(Video):
         self.CE_loss = gluon.loss.SoftmaxCrossEntropyLoss(
             from_logits=False, sparse_label=False)
 
+        optimizer = mx.optimizer.create('adam', learning_rate=0.001, multi_precision=mp)
+        self.trainer = gluon.Trainer(
+            self.net.collect_params(),
+            optimizer=optimizer)
+        '''
         self.trainer = gluon.Trainer(
             self.net.collect_params(),
             'adam',
             {'learning_rate': learning_rate})
-
+        '''
         logdir = args.version+'/logs'
         self.sw = SummaryWriter(logdir=logdir, verbose=False)
         self.sw.add_text(tag=logdir, text=exp)
@@ -251,7 +258,8 @@ class YOLO(Video):
         with mxnet.autograd.record():
             for gpu_i, (bx, by) in enumerate(zip(batch_xs, batch_ys)):
                 all_gpu_loss.append([])
-
+                if mp:
+                    bx = bx.astype('float16', copy=False)
                 x, L_pred = self.net(bx)
                 with mxnet.autograd.pause():
                     y, mask = self.loss_mask(by, gpu_i)
@@ -301,7 +309,7 @@ class YOLO(Video):
 
         # -------------------- train -------------------- #
         self.bg_iter_train = load_background('train', self.batch_size, h, w)
-        self.car_renderer = RenderCar(h, w, self.classes, ctx[0], pre_load=False)
+        self.car_renderer = RenderCar(h, w, self.classes, ctx[0], pre_load=True)
         '''addLP = AddLP(h, w, self.num_class)'''
 
         # -------------------- main loop -------------------- #
@@ -324,6 +332,7 @@ class YOLO(Video):
             for _ in range(1):
                 self.train_the(batch_xs, batch_ys)
             self.time_recorder[2] += (time.time() - t)
+            '''
             # -------------------- render dataset -------------------- #
             imgs, labels = self.car_renderer.render(bg, 'train', render_rate=0.5, pascal=True)
             batch_xs, batch_ys = split_render_data(imgs, labels, ctx)
@@ -332,7 +341,7 @@ class YOLO(Video):
             for _ in range(1):
                 self.train_the(batch_xs, batch_ys, rotate_lr=0.)
             self.time_recorder[4] += (time.time() - t)
-
+            '''
             # -------------------- show training image # --------------------
             '''
             img = batch_ndimg_2_cv2img(batch_xs[0])[0]
@@ -385,13 +394,13 @@ class YOLO(Video):
 
         if self.backward_counter % 1000 == 0:
             self.valid_iou()
-
+            pr = 0
             for i, L in enumerate(self.time_recorder):
                 self.sw.add_scalar(
                     'time',
-                    (str(i), L/3600.),
+                    (str(i), (L - pr)/3600.),
                     self.backward_counter)
-
+                pr = L
         self.backward_counter += 1
 
         if self.backward_counter % self.record_step == 0:

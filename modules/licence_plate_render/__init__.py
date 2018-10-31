@@ -18,7 +18,7 @@ sys.path.append(os.path.join(module_dir, '..'))
 from pil_image_enhancement import *
 import utils_gluon
 
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 
 color = [(255,255,0), (255,0,255), (0,255,255),(0,0,255), 
 	(0,255,0), (255,0,0), (0,0,0), (255,255,255)]
