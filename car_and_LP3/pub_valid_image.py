@@ -40,10 +40,8 @@ for bg in BG_iter:
     img = batch_ndimg_2_cv2img(imgs)[0]
     img = (img * 255).astype(np.uint8)
 
-    try:
-        img_pub.publish(bridge.cv2_to_imgmsg(img, 'bgr8'))
-    except CvBridgeError as e:
-        print(e)
+    img_pub.publish(bridge.cv2_to_imgmsg(img, 'bgr8'))
+
     #box_pub.publish(mat)
 
     raw_input('next')

@@ -39,7 +39,7 @@ def main():
     yolo = YOLO()
 
     if args.mode == 'train':
-        yolo.render_and_train()
+        yolo.render_and_train2()
 
     elif args.mode == 'valid':
         yolo.valid()
@@ -58,7 +58,7 @@ def main():
 
 
 class YOLO(Video):
-    def __init__(self, pretrain=None):
+    def __init__(self):
         with open(os.path.join(args.version, 'spec.yaml')) as f:
             spec = yaml.load(f)
 
@@ -96,13 +96,15 @@ class YOLO(Video):
         backup_list = glob.glob(self.backup_dir+'/*')
 
         print('\033[1;34m')
-        if pretrain is None:
+        if args.weight is None:
             if len(backup_list) != 0:
                 print('Use latest weight')
                 pretrain = max(backup_list, key=os.path.getctime)
             else:
                 print('no pretrain weight')
                 pretrain = 'no pretrain weight'
+        else:
+            pretrain = args.weight
 
         init_NN(self.net, pretrain, ctx)
         self.pretrain = pretrain
@@ -114,7 +116,7 @@ class YOLO(Video):
             self._init_train()
 
     def _init_train(self):
-
+        self.iou_bs = 30
         self.backward_counter = train_counter
 
         self.nd_all_anchors = [self.all_anchors.copyto(dev) for dev in ctx]
@@ -136,6 +138,7 @@ class YOLO(Video):
             'adam',
             {'learning_rate': learning_rate})
         '''
+
         logdir = args.version+'/logs'
         self.sw = SummaryWriter(logdir=logdir, verbose=False)
         self.sw.add_text(tag=logdir, text=exp)
@@ -291,6 +294,50 @@ class YOLO(Video):
         self.trainer.step(self.batch_size)
         self.record_to_tensorboard_and_save(all_gpu_loss[0])
 
+    def render_and_train2(self):
+        print('\033[1;32mRender And Train(muti_thread)\033[0m')
+        self.rendering_done = False
+        self.training_done = True
+        threading.Thread(target=self.render_thread).start()
+        t = time.time()
+        counter = 0
+        self.backward_counter = 1
+
+        while True:
+            if self.training_done:
+                #time.sleep(0.01)
+                continue
+            # because training images are not ready
+            # if training Complete first, wait for rendering
+
+            batch_xs, batch_ys = split_render_data(
+                self.imgs.copy(), self.labels.copy(), ctx)
+            self.rendering_done = False
+
+            self.train_the(batch_xs, batch_ys)
+            self.training_done = True
+
+    def render_thread(self):
+        h, w = self.size
+        self.car_renderer = RenderCar(h, w, self.classes, ctx[0], pre_load=False)
+        self.bg_iter_valid = load_background('val', self.iou_bs, h, w)
+        bg_iter_train = load_background('train', self.batch_size, h, w)
+
+        while True:
+            if self.rendering_done:
+                #time.sleep(0.1)
+                self.training_done = False
+                continue
+
+            # ready to render new images
+            if (self.backward_counter % 10 == 0 or
+                    'bg' not in locals()):
+                bg = ImageIter_next_batch(bg_iter_train).as_in_context(ctx[0])
+            # change an other batch of background
+            self.imgs, self.labels = self.car_renderer.render(
+                bg, 'train', render_rate=0.5, pascal=False)
+            self.rendering_done = True
+
     def render_and_train(self):
         print('\033[1;32mRender And Train\033[0m')
         # -------------------- show training image # --------------------
@@ -300,29 +347,27 @@ class YOLO(Video):
         fig = plt.figure()
         ax = fig.add_subplot(1, 1, 1)
         '''
-        # -------------------- load data -------------------- #
         h, w = self.size
-
-        # -------------------- valid -------------------- #
-        self.iou_bs = 30
+        # -------------------- background -------------------- #
         self.bg_iter_valid = load_background('val', self.iou_bs, h, w)
-
-        # -------------------- train -------------------- #
         self.bg_iter_train = load_background('train', self.batch_size, h, w)
-        self.car_renderer = RenderCar(h, w, self.classes, ctx[0], pre_load=True)
-        '''addLP = AddLP(h, w, self.num_class)'''
+
+        self.car_renderer = RenderCar(h, w, self.classes, ctx[0], pre_load=False)
+        #addLP = AddLP(h, w, self.num_class)
 
         # -------------------- main loop -------------------- #
-        self.time_recorder = np.zeros(5)
+        self.time_recorder = np.zeros(3)
         while True:
             t = time.time()
-            #print('\r%d'%self.backward_counter, end='')
-            if self.backward_counter % 10 == 0:
+            if (self.backward_counter % 10 == 0 or
+                    'bg' not in locals()):
                 bg = ImageIter_next_batch(self.bg_iter_train)
                 bg = bg.as_in_context(ctx[0])
             self.time_recorder[0] += (time.time() - t)
             # -------------------- render dataset -------------------- #
-            imgs, labels = self.car_renderer.render(bg, 'train', render_rate=0.5, pascal=False)
+            #p = np.random.randint(2)
+            p = False
+            imgs, labels = self.car_renderer.render(bg, 'train', render_rate=0.5, pascal=p)
             batch_xs, batch_ys = split_render_data(imgs, labels, ctx)
 
             '''if np.random.rand() > 0.2:
@@ -332,16 +377,6 @@ class YOLO(Video):
             for _ in range(1):
                 self.train_the(batch_xs, batch_ys)
             self.time_recorder[2] += (time.time() - t)
-            '''
-            # -------------------- render dataset -------------------- #
-            imgs, labels = self.car_renderer.render(bg, 'train', render_rate=0.5, pascal=True)
-            batch_xs, batch_ys = split_render_data(imgs, labels, ctx)
-            self.time_recorder[3] += (time.time() - t)
-            # -------------------- training -------------------- #
-            for _ in range(1):
-                self.train_the(batch_xs, batch_ys, rotate_lr=0.)
-            self.time_recorder[4] += (time.time() - t)
-            '''
             # -------------------- show training image # --------------------
             '''
             img = batch_ndimg_2_cv2img(batch_xs[0])[0]
@@ -398,7 +433,7 @@ class YOLO(Video):
             for i, L in enumerate(self.time_recorder):
                 self.sw.add_scalar(
                     'time',
-                    (str(i), (L - pr)/3600.),
+                    (str(i), (L - pr)),
                     self.backward_counter)
                 pr = L
         self.backward_counter += 1

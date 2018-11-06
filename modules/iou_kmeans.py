@@ -21,7 +21,7 @@ def main(data, k, iters=10):
         means.append(data[r])
 
     for iter in range(iters):
-        
+
         tmp = []
         for mean in means:
             tmp.append(get_iou(data, mean))

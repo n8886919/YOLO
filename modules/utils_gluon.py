@@ -31,7 +31,7 @@ def load_background(train_or_val, bs, w, h, **kargs):
     return BG_iter
 
 
-def split_render_data(img_batch, label_batch, ctx, addLP=0):
+def split_render_data(img_batch, label_batch, ctx):
     batch_xs, batch_ys = [], []
     batch_size = len(label_batch)
     for i, dev in enumerate(ctx):
@@ -49,8 +49,9 @@ def init_NN(target, pretrain_weight, ctx):
     print(pretrain_weight)
     try:
         target.collect_params().load(pretrain_weight, ctx=ctx)
-    except:
+    except Exception as e:
         print('\033[1;31mLoad Pretrain Fail')
+        print(e)
         target.initialize(init=mxnet.init.Xavier(), ctx=ctx)
     finally:
         target.hybridize()

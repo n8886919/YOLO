@@ -33,6 +33,7 @@ def Parser():
     parser.add_argument("--radar", help="show radar plot", dest="radar", default=0, type=int)
     parser.add_argument("--show", help="show processed image", dest="show", default=1, type=int)
     parser.add_argument("--gpu", help="gpu index", dest="gpu", default="0")
+    parser.add_argument("--weight", help="pretrain weight file", dest="weight", default=None)
     parser.parse_args().show = bool(parser.parse_args().show)
     parser.parse_args().radar = bool(parser.parse_args().radar)
     return parser.parse_args()
@@ -101,7 +102,6 @@ class Video():
         self.mat.layout.dim[1].stride = 7
         self.mat.data = [-1] * 7 * self.topk
 
-        
         fourcc = cv2.VideoWriter_fourcc(*'MP4V')  # (*'MJPG')#(*'MPEG')
         #self.out = cv2.VideoWriter('./video/car_rotate.mp4', fourcc, 30, (640, 360))
 
