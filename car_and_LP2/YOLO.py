@@ -8,10 +8,9 @@ from mxnet import gluon
 from utils import *
 from render_car import *
 
-sys.path.append('../')
-from modules.utils_gluon import *
-from modules.utils_cv import *
-from modules.licence_plate_render import *
+from yolo_modules.gluon import *
+from yolo_modules.cv import *
+from yolo_modules.licence_plate_render import *
 
 #################### Global variables ####################
 parser = argparse.ArgumentParser(prog="python YOLO.py")
@@ -145,7 +144,7 @@ class YOLO(Video):
 
         self.size = spec['size']
         self.num_class = len(spec['classes'])
-        self.all_anchors = nd.array(spec['anchors'])
+        self.all_anchors = nd.array(spec['all_anchors'])
 
         ################################################################
         #self.loss_name = ['score', 'box', 'class']
@@ -162,7 +161,7 @@ class YOLO(Video):
         print('\033[1;33;40mLoss = {}\033[0m'.format(self.loss_name))
         print('\033[1;33;40mStep = {}\033[0m'.format(self.steps))
         print('\033[1;33;40mArea = {}\033[0m'.format(self.area))
-        
+
         self.backup_dir = os.path.join(self.version, 'backup')
         self.net = CarLPNet(spec, num_sync_bn_devices=len(ctx))
         #init_NN(self.net, os.path.join(self.backup_dir, pretrain), ctx)

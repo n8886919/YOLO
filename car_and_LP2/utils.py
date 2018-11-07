@@ -18,21 +18,19 @@ from gluoncv.model_zoo.yolo.darknet import DarknetBasicBlockV3
 from gluoncv.model_zoo.yolo.yolo3 import YOLODetectionBlockV3
 from gluoncv.model_zoo.yolo.yolo3 import _upsample
 
-sys.path.append('../')
-from modules import basic_yolo
-from modules import utils_cv
+from yolo_modules import basic_yolo
+from yolo_modules import cv
 
 
 class CarLPNet(basic_yolo.BasicYOLONet):
     def __init__(self, spec, num_sync_bn_devices=1, **kwargs):
         super(CarLPNet, self).__init__(spec, num_sync_bn_devices, **kwargs)
 
-        
         LP_anchor = spec['LP_anchors']
         LP_channel = spec['channels'][-3]
         self.LP_slice_point = spec['LP_slice_point']
 
-        self.LP_branch = mxnet.gluon.nn.HybridSequential() 
+        self.LP_branch = mxnet.gluon.nn.HybridSequential()
         self.LP_branch.add(YOLODetectionBlockV3(LP_channel, num_sync_bn_devices))
         self.LP_branch.add(basic_yolo.YOLOOutput(self.LP_slice_point[-1], len(LP_anchor[0])))
 
@@ -55,7 +53,8 @@ class CarLPNet(basic_yolo.BasicYOLONet):
             x, tip = block(x)
             all_output.append(output(tip))
 
-            if end: break
+            if end:
+                break
 
             # add transition layers
             x = self.transitions[i](x)
@@ -69,9 +68,9 @@ class CarLPNet(basic_yolo.BasicYOLONet):
         return out # [(score, yxhw, cls_pred), (score, yxhw)]
 
 
-class Video():              
+class Video():
     def _init_ros(self):
-        rospy.init_node("YOLO_ros_node", anonymous = True)
+        rospy.init_node("YOLO_ros_node", anonymous=True)
         self.YOLO_img_pub = rospy.Publisher('/YOLO/img', Image, queue_size=1)
         self.YOLO_box_pub = rospy.Publisher('/YOLO/box', Float32MultiArray, queue_size=1)
 
@@ -87,27 +86,30 @@ class Video():
         self.mat.layout.dim[1].stride = 7
         self.mat.data = [-1]*7*self.topk
 
-        self.radar_prob = utils_cv.RadarProb(24)
+        self.radar_prob = cv.RadarProb(24)
 
-        fourcc = cv2.VideoWriter_fourcc(*'MP4V')#(*'MJPG')#(*'MPEG')
+        fourcc = cv2.VideoWriter_fourcc(*'MP4V')  # (*'MJPG')#(*'MPEG')
         #self.out = cv2.VideoWriter('./video/car_rotate.mp4', fourcc, 30, (640, 360))
+
     def _get_frame(self):
         #cap = open_cam_onboard(self.cam_w, self.cam_w)
         #cap = cv2.VideoCapture(1)
         cap = cv2.VideoCapture('video/GOPR0730.MP4')
         while not rospy.is_shutdown():
             ret, img = cap.read()
-            
+
             self.img = img
             #print(self.img.shape)
             #img = cv2.flip(img, -1)
             #rospy.sleep(0.1)
         cap.release()
+
     def _image_callback(self, img):
-        ##################### Convert and Predict #####################
+        # -------------------- Convert and Predict -------------------- #
         img = self.bridge.imgmsg_to_cv2(img, "bgr8")
         #self.img = img[60:420]
         self.img = img
+
     def run(self, topic=False, show=True, radar=False, ctx=gpu(0)):
         self.radar = radar
         self.show = show
@@ -115,38 +117,39 @@ class Video():
         self.topk = 1
         self._init_ros()
         self.resz = mxnet.image.ForceResizeAug((self.size[1], self.size[0]))
-        
+
         if radar:
             self.radar_prob.__init__(24)
 
         if not topic:
             threading.Thread(target=self._get_frame).start()
             print('\033[1;33;40mUse USB Camera')
-        else: 
+        else:
             rospy.Subscriber(topic, Image, self._image_callback)
-            print('\033[1;33;40mImage Topic: %s\033[0m'%topic)
-        
+            print('\033[1;33;40mImage Topic: %s\033[0m' % topic)
+
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
             if hasattr(self, 'img') and self.img is not None:
 
                 nd_img = self.resz(nd.array(self.img))
                 nd_img = nd_img.as_in_context(ctx)
-                nd_img =  nd_img.transpose((2,0,1)).expand_dims(axis=0)/255.        
+                nd_img =  nd_img.transpose((2, 0, 1)).expand_dims(axis=0)/255.
                 out = self.predict(nd_img)
                 self.visualize(out)
                 #rate.sleep()
-            #else: print('Wait For Image')      
+            #else: print('Wait For Image')
+
     def visualize(self, Cout):
         img = copy.deepcopy(self.img)
         n = np.argmax(Cout[6:])
         #self.out.write(img)
-        ########################### Add Box ###########################
+        # -------------------- Add Box -------------------- #
         vec_ang, vec_rad, prob = self.radar_prob.cls2ang(Cout[0], Cout[-self.num_class:])
         if Cout[0]>0.5:
             #self.miss_counter = 0
-            utils_cv.cv2_add_bbox(img, Cout, [0,255,0])
-            for i in range(6): 
+            cv.cv2_add_bbox(img, Cout, [0, 255, 0])
+            for i in range(6):
                 self.mat.data[i] = Cout[i]
 
             self.mat.data[6] = vec_ang
@@ -156,26 +159,25 @@ class Video():
             #if self.miss_counter > 20:
             self.mat.data = [-1]*7
 
-        if self.radar: 
+        if self.radar:
             self.radar_prob.plot(vec_ang, vec_rad, prob)
-            
 
-        self.YOLO_box_pub.publish(self.mat) 
+        self.YOLO_box_pub.publish(self.mat)
 
-        ########################## Show Image ##########################    
+        # -------------------- Show Image -------------------- #
         if self.show:
             cv2.imshow('img', img)
             cv2.waitKey(1)
 
-        ########################## Save Image ##########################
-        
-        ##################### Publish Image and Box #####################
-        self.YOLO_img_pub.publish(self.bridge.cv2_to_imgmsg(img,'bgr8'))
+        # -------------------- Save Image -------------------- #
+
+        # -------------------- Publish Image and Box -------------------- #
+        self.YOLO_img_pub.publish(self.bridge.cv2_to_imgmsg(img, 'bgr8'))
 
 
 if __name__ == '__main__':
     args = Parser()
-    
+
     with open(args.version+'/spec.yaml') as f:
         spec = yaml.load(f)
 
@@ -183,6 +185,5 @@ if __name__ == '__main__':
     net.test(64*5, 64*8)
 
     from mxboard import SummaryWriter
-    sw = SummaryWriter(logdir=args.version+'/logs')#, flush_secs=30)
+    sw = SummaryWriter(logdir=args.version+'/logs')  # , flush_secs=30)
     sw.add_graph(net)
-    

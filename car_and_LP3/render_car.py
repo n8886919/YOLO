@@ -11,8 +11,7 @@ from mxnet import nd
 
 import PIL
 
-sys.path.append('../')
-from modules import pil_image_enhancement
+from yolo_modules import pil_image_enhancement
 
 join = os.path.join
 
@@ -177,7 +176,7 @@ class RenderCar():
     def load_png_images(self):
         # -------------------- load png image and path-------------------- #
         #path = join(self.disk, 'color_material')
-        path = join(self.disk, 'no_label_car_raw_images/500')
+        path = join(self.disk, 'no_label_car_raw_images/100')
         cad_path = {
             'train': join(path, 'train'),
             'valid': join(path, 'valid')}

@@ -3,7 +3,7 @@
   layers: [1, 4, 4, 8, 8, 4],
   channels: [16, 32, 64, 128, 256, 512, 1024],
   slice_point: [1, 5, 6, 80],
-  anchors: 
+  all_anchors: 
     [
       [[0.4021, 0.3156], [0.2622, 0.2326], [0.2552, 0.3742]], 
       [[0.3515, 0.4961], [0.4605, 0.6571], [0.5815, 0.4640]],
@@ -27,13 +27,25 @@
       [90.00, 52.50],  [120.00, 52.50], [150.00, 52.50], [180.00, 52.50], [210.00, 52.50], #69
       [240.00, 52.50], [270.00, 52.50], [300.00, 52.50], [330.00, 52.50],
     ],
+  LP_slice_point: [1,5],
   LP_anchors:     
     [
       [[0.100, 0.200], [0.200, 0.400]]
     ], # (1, 2, 2)
-  LP_slice_point: [1,5],
   ############ Train ############
   record_step: 10000,
+  valid_step: 1000, 
   batch_size: 12,
+  train_counter_start: 0,
+  
+  loss_name: ['score', 'box', 'rotate', 'class'],
+  scale: {'score': 0.1, 'rotate': 10.0, 'class': 0.1, 'box': 1.0},
+  learning_rate: 0.001,
+  positive_weight: 10.0,
+  negative_weight: 0.1,
 
+  pub_img: '/YOLO/img',
+  pub_box: '/YOLO/box',
+
+  iou_bs: 30,
 }

@@ -6,7 +6,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Float32MultiArray
 from cv_bridge import CvBridge, CvBridgeError
 
-sys.path.append('../')
+#sys.path.append('../')
 from render_car import *
 from modules.utils_gluon import *
 

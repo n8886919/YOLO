@@ -4,10 +4,12 @@ import math
 import matplotlib
 import matplotlib.pyplot as plt
 
-color = [(255, 255, 0), (255, 0, 255), (0, 255, 255), (0, 0, 255),
-         (0, 255, 0), (255, 0, 0), (0, 0, 0), (255, 255, 255)]
+_color = [(255, 255, 0), (255, 0, 255), (0, 255, 255), (0, 0, 255),
+          (0, 255, 0), (255, 0, 0), (0, 0, 0), (255, 255, 255)]
 
-softmax = lambda x: np.exp(x)/np.sum(np.exp(x), axis=0)
+
+def _numpy_softmax(x):
+    return np.exp(x)/np.sum(np.exp(x), axis=0)
 
 
 def cv2_add_bbox(im, b, c):
@@ -29,7 +31,7 @@ def cv2_add_bbox(im, b, c):
 
 def cv2_add_bbox_text(img, p, text, c):
     size = img.shape
-    c = color[c % len(color)]
+    c = _color[c % len(_color)]
     l = min(max(int(p[1] * size[1]), 0), size[1])
     t = min(max(int(p[2] * size[0]), 0), size[0])
     r = min(max(int(p[3] * size[1]), 0), size[1])
@@ -58,8 +60,8 @@ class RadarProb():
             self.classes_xyz = np.concatenate((x, y, z), axis=1)
 
     def plot3d(self, confidence, prob):
-        prob = softmax(prob)
-        prob = prob * confidence  / max(prob)
+        prob = _numpy_softmax(prob)
+        prob = prob * confidence / max(prob)
         vecs = self.classes_xyz * np.expand_dims(prob, axis=1)
         print(np.sum(vecs, axis=0))
 
@@ -101,7 +103,7 @@ class RadarProb():
         plt.pause(0.001)
 
     def cls2ang(self, confidence, prob):
-        prob = softmax(prob)
+        prob = _numpy_softmax(prob)
 
         c = sum(self.cos_offset*prob)
         s = sum(self.sin_offset*prob)

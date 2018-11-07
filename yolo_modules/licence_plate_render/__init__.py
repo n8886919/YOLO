@@ -13,10 +13,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 import PIL
 
-module_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(module_dir, '..'))
+
 from pil_image_enhancement import *
-import utils_gluon
+import yolo_modules.gluon
 
 #matplotlib.use('TkAgg')
 
@@ -36,7 +35,7 @@ class AddLP():
 		self.font0 = [None] * 35
 		self.font1 = [None] * 35
 
-		
+		module_dir = os.path.dirname(os.path.abspath(__file__))
 		fonts_dir = os.path.join(module_dir, 'fonts')
 		self.dot = PIL.Image.open(fonts_dir+"/34.png").resize((10, 70), self.BIL)
 		for font_name in range(0, 34):

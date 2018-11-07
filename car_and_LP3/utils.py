@@ -20,16 +20,15 @@ from gluoncv.model_zoo.yolo.darknet import DarknetBasicBlockV3
 from gluoncv.model_zoo.yolo.yolo3 import YOLODetectionBlockV3
 from gluoncv.model_zoo.yolo.yolo3 import _upsample
 
-sys.path.append('../')
-from modules import basic_yolo
-from modules import utils_cv
+from yolo_modules import basic_yolo
+from yolo_modules import cv
 
 
 def Parser():
     parser = argparse.ArgumentParser(prog="python YOLO.py")
     parser.add_argument("version", help="v1")
     parser.add_argument("mode", help="train or valid or video")
-    parser.add_argument("-t", "--topic", help="ros topic to subscribe", dest="topic", default="")
+    parser.add_argument("--topic", "-t", help="ros topic to subscribe", dest="topic", default="")
     parser.add_argument("--radar", help="show radar plot", dest="radar", default=0, type=int)
     parser.add_argument("--show", help="show processed image", dest="show", default=1, type=int)
     parser.add_argument("--gpu", help="gpu index", dest="gpu", default="0")
@@ -87,8 +86,8 @@ class CarLPNet(basic_yolo.BasicYOLONet):
 class Video():
     def _init_ros(self):
         rospy.init_node("YOLO_ros_node", anonymous=True)
-        self.YOLO_img_pub = rospy.Publisher('/YOLO/img', Image, queue_size=1)
-        self.YOLO_box_pub = rospy.Publisher('/YOLO/box', Float32MultiArray, queue_size=1)
+        self.YOLO_img_pub = rospy.Publisher(self.pub_img, Image, queue_size=1)
+        self.YOLO_box_pub = rospy.Publisher(self.pub_box, Float32MultiArray, queue_size=1)
 
         self.bridge = CvBridge()
         self.mat = Float32MultiArray()
@@ -102,7 +101,7 @@ class Video():
         self.mat.layout.dim[1].stride = 7
         self.mat.data = [-1] * 7 * self.topk
 
-        fourcc = cv2.VideoWriter_fourcc(*'MP4V')  # (*'MJPG')#(*'MPEG')
+        #fourcc = cv2.VideoWriter_fourcc(*'MP4V')  # (*'MJPG')#(*'MPEG')
         #self.out = cv2.VideoWriter('./video/car_rotate.mp4', fourcc, 30, (640, 360))
 
     def _get_frame(self):
@@ -131,7 +130,7 @@ class Video():
         # -------------------- Add Box -------------------- #
         #vec_ang, vec_rad, prob = self.radar_prob.cla2ang(Cout[0], Cout[-self.num_class:])
         if Cout[0] > 0.5:
-            utils_cv.cv2_add_bbox(img, Cout, [0, 255, 0])
+            cv.cv2_add_bbox(img, Cout, [0, 255, 0])
             for i in range(6):
                 self.mat.data[i] = Cout[i]
 
@@ -154,7 +153,7 @@ class Video():
         # -------------------- Publish Image and Box -------------------- #
         self.YOLO_img_pub.publish(self.bridge.cv2_to_imgmsg(img, 'bgr8'))
 
-    def run(self, topic=False, show=True, radar=False, ctx=gpu(0)):
+    def video(self, topic=False, show=True, radar=False, ctx=gpu(0)):
         self.radar = radar
         self.show = show
 
@@ -183,8 +182,7 @@ class Video():
                 self.visualize(out)
                 if not topic:
                     rate.sleep()
-
-            #else: print('Wait For Image')
+            # else: print('Wait For Image')
 
 
 if __name__ == '__main__':

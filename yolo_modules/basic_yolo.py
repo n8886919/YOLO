@@ -30,7 +30,7 @@ class BasicYOLONet(gluon.HybridBlock):
                     stage.add(DarknetBasicBlockV3(channel // 2, num_sync_bn_devices))
                 self.stages.add(stage)
 
-        anchors = spec['anchors']
+        anchors = spec['all_anchors']
         self.slice_point = spec['slice_point']
 
         self.transitions, self.yolo_blocks, self.yolo_outputs = YOLOPyrmaid(

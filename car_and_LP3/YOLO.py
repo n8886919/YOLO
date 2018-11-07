@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-from __future__ import print_function
 import glob
 import sys
 import yaml
@@ -9,14 +8,12 @@ import mxnet as mx
 from mxnet import gluon
 from mxboard import SummaryWriter
 
+# self dedine modules
 from utils import *
 from render_car import *
-
-sys.path.append('../')
-
-from modules.utils_gluon import *
-from modules.utils_cv import *
-from modules.licence_plate_render import *
+from yolo_modules.gluon import *
+from yolo_modules.cv import *
+from yolo_modules.licence_plate_render import *
 
 # -------------------- Global variables -------------------- #
 args = Parser()
@@ -25,15 +22,10 @@ if args.mode == 'train':
     ctx = [gpu(int(i)) for i in args.gpu]
 else:
     ctx = [gpu(int(args.gpu[0]))]
-# -------------------- Global variables # -------------------- #
-#scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.01, 'box': 1.0}
-scale = {'score': 0.1, 'rotate': 10.0, 'class': 0.1, 'box': 1.0}
-label_mode = ['Dense', 'Sparse']
 
-train_counter = 0
-learning_rate = 0.001
-mp = False
-exp = datetime.datetime.now().strftime("%m-%dx%H-%M") + '_500' + label_mode[0]
+# -------------------- Global variables # -------------------- #
+exp = datetime.datetime.now().strftime("%m-%dx%H-%M") + '_c100'
+
 
 def main():
     yolo = YOLO()
@@ -45,7 +37,11 @@ def main():
         yolo.valid()
 
     elif args.mode == 'video':
-        yolo.run(ctx=ctx[0], topic=args.topic, radar=args.radar, show=args.show)
+        yolo.video(
+            ctx=ctx[0],
+            topic=args.topic,
+            radar=args.radar,
+            show=args.show)
 
     elif args.mode == 'kmean':
         yolo.get_default_anchors()
@@ -54,7 +50,7 @@ def main():
         yolo.pr_curve()
 
     else:
-        print('Parser 2 should be train or valid or video')
+        print('args 2 should be train or valid or video')
 
 
 class YOLO(Video):
@@ -62,62 +58,55 @@ class YOLO(Video):
         with open(os.path.join(args.version, 'spec.yaml')) as f:
             spec = yaml.load(f)
 
-        self.net = CarLPNet(spec, num_sync_bn_devices=len(ctx))
+        for key in spec:
+            setattr(self, key, spec[key])
 
-        self.size = spec['size']
-        self.num_class = len(spec['classes'])
-        self.classes = spec['classes']
-        self.all_anchors = nd.array(spec['anchors'])
-        self.record_step = spec['record_step']
-        self.batch_size = spec['batch_size'] * len(ctx)
-        # ------------------------------------------------------------ #
+        self.all_anchors = nd.array(self.all_anchors)
+        self.num_class = len(self.classes)
 
-        #self.loss_name = ['score', 'box', 'class']
-        self.loss_name = ['score', 'box', 'rotate', 'class']
-        # ------------------------------------------------------------ #
+        h = self.size[0]
+        w = self.size[1]
 
-        num_downsample = len(spec['layers'])  # number of downsample
+        num_downsample = len(self.layers)  # number of downsample
         num_prymaid_layers = len(self.all_anchors)  # number of pyrmaid layers
         prymaid_start = num_downsample - num_prymaid_layers + 1
 
         self.steps = [2**(prymaid_start+i) for i in range(num_prymaid_layers)]
-        h = self.size[0]
-        w = self.size[1]
         self.area = [int(h*w/step**2) for step in self.steps]
+
         print('\033[1;33m')
         print(exp)
         print('Device = {}'.format(ctx))
-        print('scale = {}'.format(scale))
-        print('Loss = {}'.format(self.loss_name))
+        print('scale = {}'.format(self.scale))
         print('Step = {}'.format(self.steps))
         print('Area = {}'.format(self.area))
 
-        self.backup_dir = os.path.join(args.version, 'backup')
-        backup_list = glob.glob(self.backup_dir+'/*')
+        self.net = CarLPNet(spec, num_sync_bn_devices=len(ctx))
 
-        print('\033[1;34m')
+        self.backup_dir = os.path.join(args.version, 'backup')
+
+        backup_list = glob.glob(self.backup_dir+'/*')
         if args.weight is None:
             if len(backup_list) != 0:
-                print('Use latest weight')
-                pretrain = max(backup_list, key=os.path.getctime)
+                print('Find latest weight')
+                weight = max(backup_list, key=os.path.getctime)
             else:
-                print('no pretrain weight')
-                pretrain = 'no pretrain weight'
+                weight = 'No pretrain weight'
         else:
-            pretrain = args.weight
-
-        init_NN(self.net, pretrain, ctx)
-        self.pretrain = pretrain
+            weight = args.weight
+        init_NN(self.net, weight, ctx)
 
         self._init_valid()
         if args.mode == 'train':
-            print('\033[1;33mBatch Size = {}'.format(self.batch_size))
-            print('Record Step = {}\033[0m'.format(self.record_step))
             self._init_train()
 
     def _init_train(self):
-        self.iou_bs = 30
-        self.backward_counter = train_counter
+        self.batch_size *= len(ctx)
+        print('\033[1;33m')
+        print('Batch Size = {}'.format(self.batch_size))
+        print('Record Step = {}'.format(self.record_step))
+
+        self.backward_counter = self.train_counter_start
 
         self.nd_all_anchors = [self.all_anchors.copyto(dev) for dev in ctx]
         self.get_default_ltrb()
@@ -128,20 +117,18 @@ class YOLO(Video):
         self.CE_loss = gluon.loss.SoftmaxCrossEntropyLoss(
             from_logits=False, sparse_label=False)
 
-        optimizer = mx.optimizer.create('adam', learning_rate=0.001, multi_precision=mp)
+        optimizer = mx.optimizer.create(
+            'adam',
+            learning_rate=self.learning_rate,
+            multi_precision=False)
+
         self.trainer = gluon.Trainer(
             self.net.collect_params(),
             optimizer=optimizer)
-        '''
-        self.trainer = gluon.Trainer(
-            self.net.collect_params(),
-            'adam',
-            {'learning_rate': learning_rate})
-        '''
 
         logdir = args.version+'/logs'
         self.sw = SummaryWriter(logdir=logdir, verbose=False)
-        self.sw.add_text(tag=logdir, text=exp)
+        # self.sw.add_text(tag=logdir, text=exp)
         if not os.path.exists(self.backup_dir):
             os.makedirs(self.backup_dir)
 
@@ -172,7 +159,6 @@ class YOLO(Video):
             r = nd.tile(x + 0.5*w, int(size[0]/step)).reshape(a, n, 1)
 
             LTRB.append(nd.concat(l, t, r, b, dim=-1))
-            #LTRB[a_start:a_start+a] = nd.concat(l,t,r,b, dim=-1)
             a_start += a
 
         LTRB = nd.concat(*LTRB, dim=0)
@@ -243,52 +229,36 @@ class YOLO(Video):
                     C_score[b, px, anc, :] = 1.0  # others are zero
                     C_box[b, px, anc, :] = box
                     C_rotate[b, px, anc, :] = L[5]
-                    if 'Sparse' in exp:
-                        a = nd.argmax(L[6:], axis=0)
-                        C_class[b, px, anc, a] = 1
 
-                    elif 'Dense' in exp:
-                        C_class[b, px, anc, :] = L[6:]
-
-                    else:
-                        print('Dense Or Sparse?')
+                    C_class[b, px, anc, :] = L[6:]
 
         return [C_score, C_box, C_rotate, C_class], C_mask
 
-    def train_the(self, batch_xs, batch_ys, rotate_lr=scale['rotate']):
+    def train_the(self, batch_xs, batch_ys, rotate_lr=None):
+        if rotate_lr is None:
+            rotate_lr = self.scale['rotate']
 
         all_gpu_loss = []
         with mxnet.autograd.record():
             for gpu_i, (bx, by) in enumerate(zip(batch_xs, batch_ys)):
                 all_gpu_loss.append([])
-                if mp:
-                    bx = bx.astype('float16', copy=False)
+                #bx = bx.astype('float16', copy=False)
                 x, L_pred = self.net(bx)
                 with mxnet.autograd.pause():
                     y, mask = self.loss_mask(by, gpu_i)
 
-                    score_weight = nd.where(
+                    s_weight = nd.where(
                         mask > 0,
-                        nd.ones_like(mask)*10.0,
-                        nd.ones_like(mask)*0.1,
+                        nd.ones_like(mask)*self.positive_weight,
+                        nd.ones_like(mask)*self.negative_weight,
                         ctx=ctx[gpu_i])
 
-                if 'score' in self.loss_name:
-                    s = self.LG_loss(x[0], y[0], score_weight * scale['score'])
-                    all_gpu_loss[gpu_i].append(s)
+                s = self.LG_loss(x[0], y[0], s_weight * self.scale['score'])
+                b = self.L2_loss(x[1], y[1], mask * self.scale['box'])
+                r = self.L2_loss(x[2], y[2], mask * rotate_lr)
+                c = self.CE_loss(x[3], y[3], mask * self.scale['class'])
 
-                if 'box' in self.loss_name:
-                    b = self.L2_loss(x[1], y[1], mask * scale['box'])
-                    all_gpu_loss[gpu_i].append(b)
-
-                if 'rotate' in self.loss_name:
-                    r = self.L2_loss(x[2], y[2], mask * rotate_lr)
-                    all_gpu_loss[gpu_i].append(r)
-
-                if 'class' in self.loss_name:
-                    c = self.CE_loss(x[3], y[3], mask * scale['class'])
-                    all_gpu_loss[gpu_i].append(c)
-
+                all_gpu_loss[gpu_i].extend((s, b, r, c))
                 sum(all_gpu_loss[gpu_i]).backward()
 
         self.trainer.step(self.batch_size)
@@ -299,13 +269,10 @@ class YOLO(Video):
         self.rendering_done = False
         self.training_done = True
         threading.Thread(target=self.render_thread).start()
-        t = time.time()
-        counter = 0
-        self.backward_counter = 1
 
         while True:
             if self.training_done:
-                #time.sleep(0.01)
+                time.sleep(0.01)
                 continue
             # because training images are not ready
             # if training Complete first, wait for rendering
@@ -325,7 +292,7 @@ class YOLO(Video):
 
         while True:
             if self.rendering_done:
-                #time.sleep(0.1)
+                time.sleep(0.1)
                 self.training_done = False
                 continue
 
@@ -424,11 +391,12 @@ class YOLO(Video):
 
             self.sw.add_scalar(
                 loss_name,
-                (exp, nd.mean(L).asnumpy()/scale[loss_name]),
+                (exp, nd.mean(L).asnumpy()/self.scale[loss_name]),
                 self.backward_counter)
 
-        if self.backward_counter % 1000 == 0:
+        if self.backward_counter % self.valid_step == 0:
             self.valid_iou()
+            '''
             pr = 0
             for i, L in enumerate(self.time_recorder):
                 self.sw.add_scalar(
@@ -436,8 +404,8 @@ class YOLO(Video):
                     (str(i), (L - pr)),
                     self.backward_counter)
                 pr = L
+            '''
         self.backward_counter += 1
-
         if self.backward_counter % self.record_step == 0:
             idx = self.backward_counter//self.record_step
             save_model = os.path.join(self.backup_dir, exp + 'iter' + '_%d' % idx)
@@ -550,7 +518,7 @@ class YOLO(Video):
         plt.ion()
         fig = plt.figure()
         ax1 = fig.add_subplot(1, 1, 1)
-        self.radar_prob = utils_cv.RadarProb(self.num_class, self.classes)
+        self.radar_prob = cv.RadarProb(self.num_class, self.classes)
 
         for bg in BG_iter:
             bg = bg.data[0].as_in_context(ctx[0])  # b*RGB*w*h
@@ -759,7 +727,6 @@ class LP():
 
                     
         return [C_score, C_box, C_class], C_mask
-
 '''
 
 # -------------------- Main -------------------- #

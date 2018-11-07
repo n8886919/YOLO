@@ -5,7 +5,7 @@ from mxnet import nd, gpu, cpu
 import matplotlib
 import matplotlib.pyplot as plt
 
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 
 def main(data, k, iters=10):
     plt.ion()

@@ -3,7 +3,9 @@ import os
 import mxnet
 from mxnet import nd
 
-nd_inv_sigmoid = lambda x: -nd.log(1/x - 1)
+
+def nd_inv_sigmoid(x):
+    return -nd.log(1/x - 1)
 
 
 def batch_ndimg_2_cv2img(x):
@@ -45,13 +47,15 @@ def split_render_data(img_batch, label_batch, ctx):
     return batch_xs, batch_ys
 
 
-def init_NN(target, pretrain_weight, ctx):
-    print(pretrain_weight)
+def init_NN(target, weight, ctx):
+    print('use pretrain weight: %s' % weight)
     try:
-        target.collect_params().load(pretrain_weight, ctx=ctx)
+        target.collect_params().load(weight, ctx=ctx)
     except Exception as e:
-        print('\033[1;31mLoad Pretrain Fail')
-        print(e)
+        print('\033[1;31m')
+        print('Load Pretrain Fail')
+        print(e.message.split('\n')[0])
+
         target.initialize(init=mxnet.init.Xavier(), ctx=ctx)
     finally:
         target.hybridize()
@@ -73,25 +77,6 @@ def assign_batch(batch, ctx):
         batch_xs = [batch.data[0].as_in_context(ctx[0])] # b*RGB*w*h
         batch_ys = [batch.label[0].as_in_context(ctx[0])] # b*L*5   
     return batch_xs, batch_ys
-
-'''
-def load_ImageDetIter(path, batch_size, h, w):
-    print('Loading ImageDetIter ' + path)
-    batch_iter = mxnet.image.ImageDetIter(batch_size, (3, h, w),
-        path_imgrec=path+'.rec',
-        path_imgidx=path+'.idx',
-        shuffle=True,
-        pca_noise=0.1, 
-        brightness=0.5,
-        saturation=0.5, 
-        contrast=0.5, 
-        hue=1.0
-        #rand_crop=0.2,
-        #rand_pad=0.2,
-        #area_range=(0.8, 1.2),
-        )
-    return batch_iter
-'''
 
 
 def get_iterators(
@@ -182,3 +167,23 @@ def nd_label_batch_ltrb2yxhw(label_batch):
     new_label_batch[:, :, 3] = label_batch[:, :, 2] - label_batch[:, :, 0]  # w
 
     return new_label_batch
+
+
+'''
+def load_ImageDetIter(path, batch_size, h, w):
+    print('Loading ImageDetIter ' + path)
+    batch_iter = mxnet.image.ImageDetIter(batch_size, (3, h, w),
+        path_imgrec=path+'.rec',
+        path_imgidx=path+'.idx',
+        shuffle=True,
+        pca_noise=0.1,
+        brightness=0.5,
+        saturation=0.5,
+        contrast=0.5,
+        hue=1.0
+        #rand_crop=0.2,
+        #rand_pad=0.2,
+        #area_range=(0.8, 1.2),
+        )
+    return batch_iter
+'''
