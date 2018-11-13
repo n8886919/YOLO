@@ -79,14 +79,14 @@ class PILImageEnhance():
         return img
 
 
-def _numpy_softmax(x):
-    return np.exp(x)/np.sum(np.exp(x), axis=0)
-
-
 def init_matplotlib_figure():
     plt.ion()
     fig = plt.figure()
     return fig.add_subplot(1, 1, 1)
+
+
+def _numpy_softmax(x):
+    return np.exp(x)/np.sum(np.exp(x), axis=0)
 
 
 def cv2_add_bbox(im, b, color):

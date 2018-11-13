@@ -9,9 +9,12 @@ import mxnet
 from mxnet import gpu
 from mxnet import nd
 
+import matplotlib.pyplot as plt
 import PIL
 
-from yolo_modules import pil_image_enhancement
+from yolo_modules import yolo_cv
+from yolo_modules import yolo_gluon
+from yolo_modules import licence_plate_render
 
 join = os.path.join
 
@@ -26,10 +29,9 @@ class RenderCar():
         self.ctx = ctx
         self.pre_load = pre_load
 
-        self.BIL = PIL.Image.BILINEAR
         self.disk = '/media/nolan/SSD1'
         # -------------------- init image enhencement -------------------- #
-        self.pil_image_enhance = pil_image_enhancement.PILImageEnhance(
+        self.pil_image_enhance = yolo_cv.PILImageEnhance(
             M=0, N=0, R=30.0, G=0.3, noise_var=0)
         self.augs = mxnet.image.CreateAugmenter(
             data_shape=(3, img_h, img_w), inter_method=10, pca_noise=0.1,
@@ -52,6 +54,8 @@ class RenderCar():
           use pascal_3D dataset or not
         render_rate: float
           probability of image contain a car
+        LP_rate: float
+          probability of add licence plate
 
         Returns
         ----------
@@ -62,7 +66,7 @@ class RenderCar():
         '''
         bs = len(bg)
         ctx = self.ctx
-        label_batch = nd.ones((bs, 1, 6+self.num_cls), ctx=ctx) * (-1)
+        label_batch = nd.ones((bs, 2, 6+self.num_cls), ctx=ctx) * (-1)
         img_batch = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
         mask = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
 
@@ -99,30 +103,28 @@ class RenderCar():
             # -------------------- -------------------- #
             tmp = PIL.Image.new('RGBA', (self.w, self.h))
             tmp.paste(pil_img, (paste_x, paste_y))
-            #tmp.show()
-            m = nd.array(tmp.split()[-1], ctx=ctx).reshape(1, self.h, self.w)
-            mask[i] = nd.tile(m, (3, 1, 1)) / 255.
 
-            fg = PIL.Image.merge("RGB", (tmp.split()[:3]))
-            fg = nd.array(fg)
+            fg = yolo_gluon.pil_rgb_2_rgb_ndarray(tmp, augs=self.augs)
+            img_batch[i] = fg.as_in_context(ctx)
 
-            for aug in self.augs:
-                fg = aug(fg)
-
-            # -------------------- -------------------- #
-            img_batch[i] = fg.as_in_context(ctx).transpose((2, 0, 1))
+            m = yolo_gluon.pil_mask_2_rgb_ndarray(tmp.split()[-1])
+            mask[i] = m.as_in_context(ctx)
 
             label = nd.array([[
                 img_cls,
-                box_y/self.h, box_x/self.w,
-                box_h/self.h, box_w/self.w, r]])
+                box_y/self.h,
+                box_x/self.w,
+                box_h/self.h,
+                box_w/self.w,
+                r]])
 
             label = nd.concat(label, label_distribution, dim=-1)
             label_batch[i] = label
         ####################################################################
-        img_batch = (bg * (1 - mask) + img_batch * mask) / 255.
+        img_batch = ((bg / 255.) * (1 - mask) + img_batch * mask)
         img_batch = nd.clip(img_batch, 0, 1)
         # 0~1 (batch_size, channels, h, w)
+
         return img_batch, label_batch
 
     def load_mtv_images(self):
@@ -357,7 +359,7 @@ class RenderCar():
         resize = np.random.uniform(low=min_scale, high=max_scale)
         resize_w = resize * pil_img.size[0]
         resize_h = resize * pil_img.size[1] * r1
-        pil_img = pil_img.resize((int(resize_w), int(resize_h)), self.BIL)
+        pil_img = pil_img.resize((int(resize_w), int(resize_h)), PIL.Image.BILINEAR)
 
         return resize, resize_w, resize_h, pil_img
 
@@ -449,44 +451,6 @@ class RenderCar():
 
         return ele, azi, box, False
 
-    def test(self):
-        ctx = [gpu(0)]
-        add_LP = AddLP(self.h, self.w, -1)
-
-        plt.ion()
-        fig = plt.figure()
-        ax = []
-        for i in range(self.bs):
-            ax.append(fig.add_subplot(1, 1, 1+i))
-            #ax.append(fig.add_subplot(4,4,1+i))
-        t = time.time()
-        background_iter = mxnet.image.ImageIter(
-            self.bs, (3, self.h, self.w),
-            path_imgrec='/media/nolan/SSD1/HP_31/sun2012_val.rec',
-            path_imgidx='/media/nolan/SSD1/HP_31/sun2012_val.idx',
-            shuffle=True, pca_noise=0,
-            brightness=0.5, saturation=0.5, contrast=0.5, hue=1.0,
-            rand_crop=True, rand_resize=True, rand_mirror=True, inter_method=10
-            )
-        while True:  # bg:0~255
-            bg = background_iter.next().data[0].as_in_context(ctx[0])
-
-            #img_batch, label_batch = self.render_pascal(bg, 'train')
-            img_batch, label_batch = self.render(bg)
-            #img_batch, label_batch = add_LP.add(img_batch, label_batch)
-            for i in range(self.bs):
-                ax[i].clear()
-
-                im = img_batch[i].transpose((1, 2, 0)).asnumpy()
-                b = label_batch[i, 0].asnumpy()
-                print(b)
-                im = cv2_add_bbox(im, b, [0, 0, 1])
-
-                ax[i].imshow(im)
-                ax[i].axis('off')
-
-            raw_input('next')
-
 
 def rad_2_deg(rad):
     return rad * 180. / math.pi
@@ -494,3 +458,27 @@ def rad_2_deg(rad):
 
 def deg_2_rad(deg):
     return deg * math.pi / 180.
+
+
+if __name__ == '__main__':
+    ctx = [gpu(0)]
+    h, w = 320, 512
+
+    bg_iter = yolo_gluon.load_background('val', 10, h, w)
+    car_renderer = RenderCar(h, w, [[0, 0]], ctx[0], pre_load=False)
+    LP_generator = licence_plate_render.LPGenerator(h, w, 1)
+
+    ax = yolo_cv.init_matplotlib_figure()
+
+    while True:
+        bg = yolo_gluon.ImageIter_next_batch(bg_iter).as_in_context(ctx[0])
+        imgs, labels1 = car_renderer.render(
+            bg, 'valid', render_rate=0.9, pascal=np.random.randint(2))
+        L1 = labels1[0, 0]
+
+        imgs, L2 = LP_generator.add(imgs)
+        img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
+        #img = yolo_cv.cv2_add_bbox(img, L1.asnumpy(), 4)
+
+        ax.imshow(img)
+        raw_input()

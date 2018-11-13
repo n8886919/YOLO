@@ -1,7 +1,23 @@
 import os
-
+import PIL
 import mxnet
 from mxnet import nd
+
+
+def pil_mask_2_rgb_ndarray(m):
+    m = nd.array(m).reshape(1, m.size[1], m.size[0])
+    return nd.tile(m, (3, 1, 1)) / 255.
+
+
+def pil_rgb_2_rgb_ndarray(pil_img, augs=None):
+    pil_img = PIL.Image.merge("RGB", (pil_img.split()[:3]))
+    img = nd.array(pil_img)
+
+    if augs is not None:
+        for aug in augs:
+            img = aug(img)
+
+    return img.transpose((2, 0, 1)) / 255.
 
 
 def nd_inv_sigmoid(x):
@@ -33,18 +49,21 @@ def load_background(train_or_val, bs, w, h, **kargs):
     return BG_iter
 
 
-def split_render_data(img_batch, label_batch, ctx):
-    batch_xs, batch_ys = [], []
-    batch_size = len(label_batch)
+def split_render_data(batch, ctx):
+    # split_render_data(batch_x, batch_y, ctx)
+    # >>> split_render_data(batch, ctx)
+    # splitted_batches = [data0 in gpu0, data0 in gpu1]
+    splitted_batch = []
+
+    batch_size = len(batch[0])
     for i, dev in enumerate(ctx):
         start = int(i*batch_size/len(ctx))
         end = int((i+1)*batch_size/len(ctx))
-        batch_x = img_batch[start:end].as_in_context(dev)
-        batch_y = label_batch[start:end].as_in_context(dev)
 
-        batch_xs.append(batch_x)
-        batch_ys.append(batch_y)
-    return batch_xs, batch_ys
+        batch_at_gpu_i = batch[start:end].as_in_context(dev)
+        splitted_batch.append(batch_at_gpu_i)
+
+    return splitted_batch
 
 
 def init_NN(target, weight, ctx):

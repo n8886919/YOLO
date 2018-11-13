@@ -9,11 +9,12 @@ from mxnet import gluon
 from mxboard import SummaryWriter
 
 # self dedine modules
+from yolo_modules import yolo_gluon
+from yolo_modules import yolo_cv
+from yolo_modules import licence_plate_render
+
 from utils import *
 from render_car import *
-from yolo_modules.gluon import *
-from yolo_modules.cv import *
-from yolo_modules.licence_plate_render import *
 
 # -------------------- Global variables -------------------- #
 args = Parser()
@@ -165,8 +166,7 @@ class YOLO(Video):
         self.all_anchors_ltrb = [LTRB.copyto(device) for device in ctx]
 
     def find_best(self, L, gpu_index):
-        anc_ltrb = self.all_anchors_ltrb[gpu_index][:]
-        IOUs = get_iou(anc_ltrb, L, mode=2)
+        IOUs = get_iou(self.all_anchors_ltrb[gpu_index], L, mode=2)
         best_match = int(IOUs.reshape(-1).argmax(axis=0).asnumpy()[0])
         # print(best_match)
         best_pixel = int(best_match // len(self.all_anchors[0]))
@@ -175,7 +175,7 @@ class YOLO(Video):
         best_ltrb = self.all_anchors_ltrb[gpu_index][best_pixel, best_anchor]
         best_ltrb = best_ltrb.reshape(-1)
 
-        assert best_pixel < self.area[0] + self.area[1] + self.area[2], (
+        assert best_pixel < (self.area[0] + self.area[1] + self.area[2]), (
             "best_pixel < sum(area), given {} vs {}".format(
                 best_pixel, sum(self.area)))
 
@@ -204,6 +204,60 @@ class YOLO(Video):
         th = nd.log((L[3]) / self.nd_all_anchors[gpu_index][pyramid_layer, best_anchor, 0])
         tw = nd.log((L[4]) / self.nd_all_anchors[gpu_index][pyramid_layer, best_anchor, 1])
         return best_pixel, best_anchor, nd.concat(ty, tx, th, tw, dim=-1)
+
+    def LP_find_best(self, L, gpu_index):
+        IOUs = get_iou(self.all_anchors_ltrb[gpu_index], L, mode=2)
+        best_match = int(IOUs.reshape(-1).argmax(axis=0).asnumpy()[0])
+        # print(best_match)
+        best_pixel = int(best_match // len(self.all_anchors[0]))
+        best_anchor = int(best_match % len(self.all_anchors[0]))
+
+        best_ltrb = self.all_anchors_ltrb[gpu_index][best_pixel, best_anchor]
+        best_ltrb = best_ltrb.reshape(-1)
+
+        '''
+        print('best_pixel = %d'%best_pixel)
+        print('best_anchor = %d'%best_anchor)
+        print('pyramid_layer = %d'%pyramid_layer)
+        '''
+        step = self.steps[pyramid_layer]
+
+        by_minus_cy = L[1] - (best_ltrb[3] + best_ltrb[1]) / 2
+        sigmoid_ty = by_minus_cy * self.size[0] / step + 0.5
+        sigmoid_ty = nd.clip(sigmoid_ty, 0.0001, 0.9999)
+        ty = nd_inv_sigmoid(sigmoid_ty)
+
+        bx_minus_cx = L[2] - (best_ltrb[2] + best_ltrb[0]) / 2
+        sigmoid_tx = bx_minus_cx*self.size[1]/step + 0.5
+        sigmoid_tx = nd.clip(sigmoid_tx, 0.0001, 0.9999)
+        tx = nd_inv_sigmoid(sigmoid_tx)
+        th = nd.log((L[3]) / self.nd_all_anchors[gpu_index][pyramid_layer, best_anchor, 0])
+        tw = nd.log((L[4]) / self.nd_all_anchors[gpu_index][pyramid_layer, best_anchor, 1])
+        return best_pixel, best_anchor, nd.concat(v3, v4, v5, v6, v7, v8, dim=-1)
+
+    def LP_loss_mask(self, label_batch, gpu_index):
+        """Generate training targets given predictions and label_batch.
+        label_batch: bs*object*[class, cent_y, cent_x, box_h, box_w, rotate]
+        """
+        bs = label_batch.shape[0]
+        a = self.area[0]
+        n = 1  # len(self.all_anchors[0])
+
+        score = nd.zeros((bs, a, n, 1), ctx=ctx[gpu_index])
+        mask = nd.zeros((bs, a, n, 1), ctx=ctx[gpu_index])
+        box = nd.zeros((bs, a, n, 4), ctx=ctx[gpu_index])
+
+        for b in range(bs):
+            for L in label_batch[b]:  # all object in the image
+                if L[0] < 0:
+                    continue
+                else:
+                    px, anc, box = self.find_best(L, gpu_index)
+                    score[b, px, anc, :] = 1.0  # others are zero
+                    mask[b, px, anc, :] = 1.0  # others are zero
+                    box[b, px, anc, :] = box
+
+        return [score, box], mask
 
     def loss_mask(self, label_batch, gpu_index):
         """Generate training targets given predictions and label_batch.
@@ -234,6 +288,20 @@ class YOLO(Video):
 
         return [C_score, C_box, C_rotate, C_class], C_mask
 
+    def _score_weight(self, mode, mask, ctx):
+        if mode == 'car':
+            n = self.negative_weight
+            p = self.positive_weight
+
+        elif mode == 'LP':
+            n = self.LP_negative_weight
+            p = self.LP_positive_weight
+
+        ones = nd.ones_like(mask)
+        score_weight = nd.where(mask > 0, ones*p, ones*n, ctx=ctx)
+
+        return score_weight
+
     def train_the(self, batch_xs, batch_ys, rotate_lr=None):
         if rotate_lr is None:
             rotate_lr = self.scale['rotate']
@@ -241,24 +309,27 @@ class YOLO(Video):
         all_gpu_loss = []
         with mxnet.autograd.record():
             for gpu_i, (bx, by) in enumerate(zip(batch_xs, batch_ys)):
+                # gpu_i = GPU index
                 all_gpu_loss.append([])
                 #bx = bx.astype('float16', copy=False)
-                x, L_pred = self.net(bx)
+                x, x_LP = self.net(bx)
                 with mxnet.autograd.pause():
                     y, mask = self.loss_mask(by, gpu_i)
+                    s_weight = self._score_weight('car', mask, ctx)
 
-                    s_weight = nd.where(
-                        mask > 0,
-                        nd.ones_like(mask)*self.positive_weight,
-                        nd.ones_like(mask)*self.negative_weight,
-                        ctx=ctx[gpu_i])
+                    LP_y, LP_mask = self.LP_loss_mask(by, gpu_i)
+                    LP_s_weight = self._score_weight('LP', LP_mask, ctx)
 
                 s = self.LG_loss(x[0], y[0], s_weight * self.scale['score'])
                 b = self.L2_loss(x[1], y[1], mask * self.scale['box'])
                 r = self.L2_loss(x[2], y[2], mask * rotate_lr)
                 c = self.CE_loss(x[3], y[3], mask * self.scale['class'])
-
                 all_gpu_loss[gpu_i].extend((s, b, r, c))
+
+                LP_s = self.LG_loss(LP_x[0], LP_y[0], LP_s_weight * self.scale['LP_score'])
+                LP_b = self.L1_loss(LP_x[1], LP_y[1], LP_mask * self.scale['LP_box'])
+                all_gpu_loss[gpu_i].extend((LP_s, LP_b))
+
                 sum(all_gpu_loss[gpu_i]).backward()
 
         self.trainer.step(self.batch_size)
@@ -272,15 +343,15 @@ class YOLO(Video):
 
         while True:
             if self.training_done:
+                #print('train done')
                 time.sleep(0.01)
                 continue
             # because training images are not ready
             # if training Complete first, wait for rendering
+            batch_xs = split_render_data(self.imgs.copy(), ctx)
+            batch_ys = split_render_data(self.labels.copy(), ctx)
 
-            batch_xs, batch_ys = split_render_data(
-                self.imgs.copy(), self.labels.copy(), ctx)
             self.rendering_done = False
-
             self.train_the(batch_xs, batch_ys)
             self.training_done = True
 
@@ -292,7 +363,8 @@ class YOLO(Video):
 
         while True:
             if self.rendering_done:
-                time.sleep(0.1)
+                #print('render done')
+                time.sleep(0.01)
                 self.training_done = False
                 continue
 

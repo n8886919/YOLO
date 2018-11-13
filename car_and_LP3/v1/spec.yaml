@@ -28,18 +28,20 @@
       [240.00, 52.50], [270.00, 52.50], [300.00, 52.50], [330.00, 52.50],
     ],
   LP_slice_point: [1,5],
-  LP_anchors:     
-    [
-      [[0.100, 0.200], [0.200, 0.400]]
-    ], # (1, 2, 2)
+  LP_all_anchors:     
+    [0.100, 0.200] # (1, 2)
   ############ Train ############
   record_step: 10000,
   valid_step: 1000, 
   batch_size: 12,
   train_counter_start: 0,
   
-  loss_name: ['score', 'box', 'rotate', 'class'],
-  scale: {'score': 0.1, 'rotate': 10.0, 'class': 0.1, 'box': 1.0},
+  loss_name: ['score', 'box', 'rotate', 'class', 'LP_score', 'LP_box'],
+  scale: 
+    {
+      'score': 0.1, 'rotate': 10.0, 'class': 0.1, 'box': 1.0,
+      'LP_score': 0.1, 'LP_box': 1.0
+    },
   learning_rate: 0.001,
   positive_weight: 10.0,
   negative_weight: 0.1,
