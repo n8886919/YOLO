@@ -20,7 +20,7 @@ from yolo_modules import yolo_gluon
 
 
 class LPGenerator():
-    def __init__(self, img_h, img_w, class_index):
+    def __init__(self, img_h, img_w, class_index=1):
         self.class_index = int(class_index)
         self.h = img_h
         self.w = img_w
@@ -43,9 +43,10 @@ class LPGenerator():
             self.font1[font_name] = f.resize((40, 80), PIL.Image.BILINEAR)
 
         self.project_rect_6d = ProjectRectangle6D(*self.LP_WH[0])
-        '''
+        
         self.pil_image_enhance = yolo_cv.PILImageEnhance(
-            M=.1, N=.2, R=20.0, G=0.3, noise_var=20.)
+            M=0., N=0., R=0., G=1.0, noise_var=10.)
+        '''
         self.augs = mxnet.image.CreateAugmenter(
             data_shape=(3, self.h, self.w), inter_method=10,
             brightness=0.5, contrast=0.5, saturation=0.5, pca_noise=1.0)
@@ -130,7 +131,13 @@ class LPGenerator():
         return LP.transpose((2, 0, 1)), mask, LP_label
 
     def random_projection_LP_6D(self, LP, in_size, out_size):
-        X, Y, Z, r1, r2, r3 = 500, 500, 2000, 0, 0, 0
+        Z = np.random.uniform(low=1000., high=3000.)
+        X = (Z * 8 / 30.) * np.random.uniform(low=-1, high=1)
+        Y = (Z * 6 / 30.) * np.random.uniform(low=-1, high=1)
+        r1 = np.random.uniform(low=-1, high=1) * math.pi / 4.
+        r2 = np.random.uniform(low=-1, high=1) * math.pi / 4.
+        r3 = np.random.uniform(low=-1, high=1) * math.pi / 6.
+
         pose_6d = [X, Y, Z, r1, r2, r3]
         projected_points = self.project_rect_6d(pose_6d)
 
@@ -145,10 +152,18 @@ class LPGenerator():
             PIL.Image.BILINEAR)
 
         LP = LP.resize((out_size[1], out_size[0]), PIL.Image.BILINEAR)
+        LP, _ = self.pil_image_enhance(LP)
 
         mask = yolo_gluon.pil_mask_2_rgb_ndarray(LP.split()[-1])
         image = yolo_gluon.pil_rgb_2_rgb_ndarray(LP, augs=self.augs)
-        label = nd.array([[1] + [X, Y, Z, r1, r2, r3]])
+
+        x = X * self.project_rect_6d.fx / Z + self.project_rect_6d.cx
+        x = x * out_size[1] / float(self.project_rect_6d.camera_w)
+
+        y = Y * self.project_rect_6d.fy / Z + self.project_rect_6d.cy
+        y = y * out_size[0] / float(self.project_rect_6d.camera_h)
+
+        label = nd.array([[1] + [X, Y, Z, r1, r2, r3, x, y]])
 
         return mask, image, label
 
@@ -160,7 +175,7 @@ class LPGenerator():
 
         mask_batch = nd.zeros_like(bg_batch)
         image_batch = nd.zeros_like(bg_batch)
-        label_batch = nd.ones((bs, 1, 7), ctx=ctx) * (-1)
+        label_batch = nd.zeros((bs, 1, 9), ctx=ctx)
         # label_batch = nd.ones((bs, 1, 6), ctx=ctx) * -1
 
         for i in range(bs):
@@ -169,13 +184,13 @@ class LPGenerator():
 
             LP, _ = self.draw_LP()
 
-            output_shape = (h, w)
-            input_shape = (
+            output_size = (h, w)
+            input_size = (
                 self.project_rect_6d.camera_h,
                 self.project_rect_6d.camera_w)
 
             mask, image, label = self.random_projection_LP_6D(
-                LP, input_shape, output_shape)
+                LP, input_size, output_size)
 
             mask_batch[i] = mask.as_in_context(ctx)
             image_batch[i] = image.as_in_context(ctx)
@@ -345,6 +360,21 @@ class ProjectRectangle6D():
             points[i, 1] = ans[1, i] / ans[2, i]
 
         return points.astype(np.float32)
+
+    def add_edges(self, img, pose, color_idx):
+        for i in range(3):
+            pose[i] *= 1000
+            pose[i+3] *= 0.0174533
+
+        points = self.__call__(pose)
+        x_scale = img.shape[1] / float(self.camera_w)
+        y_scale = img.shape[0] / float(self.camera_h)
+        points[:, 0] = points[:, 0] * x_scale
+        points[:, 1] = points[:, 1] * y_scale
+
+        points = np.expand_dims(points, axis=0).astype(np.int32)
+        cv2.polylines(img, points, 1, (0, 0, 1), 2)
+        return img, points
 
 
 if __name__ == '__main__':

@@ -21,7 +21,8 @@ from gluoncv.model_zoo.yolo.yolo3 import YOLODetectionBlockV3
 from gluoncv.model_zoo.yolo.yolo3 import _upsample
 
 from yolo_modules import basic_yolo
-from yolo_modules import cv
+from yolo_modules import yolo_cv
+from yolo_modules import licence_plate_render
 
 
 def Parser():
@@ -42,13 +43,13 @@ class CarLPNet(basic_yolo.BasicYOLONet):
     def __init__(self, spec, num_sync_bn_devices=1, **kwargs):
         super(CarLPNet, self).__init__(spec, num_sync_bn_devices, **kwargs)
 
-        LP_anchor = spec['LP_anchors']
+        #LP_anchor = spec['LP_anchors']
         LP_channel = spec['channels'][-3]
         self.LP_slice_point = spec['LP_slice_point']
 
         self.LP_branch = mxnet.gluon.nn.HybridSequential()
         self.LP_branch.add(YOLODetectionBlockV3(LP_channel, num_sync_bn_devices))
-        self.LP_branch.add(basic_yolo.YOLOOutput(self.LP_slice_point[-1], len(LP_anchor[0])))
+        self.LP_branch.add(basic_yolo.YOLOOutput(self.LP_slice_point[-1], 1))
 
     def hybrid_forward(self, F, x, *args):
         routes = []
@@ -100,7 +101,7 @@ class Video():
         self.mat.layout.dim[0].stride = self.topk * 7
         self.mat.layout.dim[1].stride = 7
         self.mat.data = [-1] * 7 * self.topk
-
+        self.project_rect_6d = licence_plate_render.ProjectRectangle6D(380, 160)
         #fourcc = cv2.VideoWriter_fourcc(*'MP4V')  # (*'MJPG')#(*'MPEG')
         #self.out = cv2.VideoWriter('./video/car_rotate.mp4', fourcc, 30, (640, 360))
 
@@ -123,23 +124,22 @@ class Video():
         #self.img = img[60:420]
         self.img = img
 
-    def visualize(self, Cout):
+    def visualize(self, out):
+        Cout = out[0][0]
+        LP_out = out[1][0]
         img = copy.deepcopy(self.img)
-        n = np.argmax(Cout[6:])
         #self.out.write(img)
         # -------------------- Add Box -------------------- #
         #vec_ang, vec_rad, prob = self.radar_prob.cla2ang(Cout[0], Cout[-self.num_class:])
         if Cout[0] > 0.5:
-            cv.cv2_add_bbox(img, Cout, [0, 255, 0])
+            yolo_cv.cv2_add_bbox(img, Cout, 4)
             for i in range(6):
                 self.mat.data[i] = Cout[i]
-
-            #self.mat.data[6] = vec_ang
-
         else:
-            #self.miss_counter += 1
-            #if self.miss_counter > 20:
             self.mat.data = [-1]*7
+
+        if LP_out[0] > 0.5:
+            img = self.project_rect_6d.add_edges(img, LP_out[1:], 6)
 
         if self.radar:
             self.radar_prob.plot3d(Cout[0], Cout[-self.num_class:])
@@ -178,7 +178,7 @@ class Video():
                 nd_img = self.resz(nd.array(self.img))
                 nd_img = nd_img.as_in_context(ctx)
                 nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0)/255.
-                out = self.predict(nd_img)[0]
+                out = self.predict(nd_img, LP=True)
                 self.visualize(out)
                 if not topic:
                     rate.sleep()

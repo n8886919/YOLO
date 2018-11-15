@@ -85,11 +85,17 @@ def init_matplotlib_figure():
     return fig.add_subplot(1, 1, 1)
 
 
+def matplotlib_show_img(ax, img):
+    ax.clear()
+    ax.imshow(img)
+    ax.axis('off')
+
+
 def _numpy_softmax(x):
     return np.exp(x)/np.sum(np.exp(x), axis=0)
 
 
-def cv2_add_bbox(im, b, color):
+def cv2_add_bbox(im, b, color_idx):
     r = -b[5]
     im_w = im.shape[1]
     im_h = im.shape[0]
@@ -102,7 +108,8 @@ def cv2_add_bbox(im, b, color):
         [ w*math.cos(r)/2 + h*math.sin(r)/2,  w*math.sin(r)/2 - h*math.cos(r)/2]]])
     s = np.array([b[2], b[1]])*[im_w, im_h]
     a = (a + s).astype(int)
-    cv2.polylines(im, a, 1, _color[color], 2)
+    c = np.array(_color[color_idx]) / 255.
+    cv2.polylines(im, a, 1, c, 2)
     return im
 
 

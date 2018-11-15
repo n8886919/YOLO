@@ -35,7 +35,7 @@ class RenderCar():
             M=0, N=0, R=30.0, G=0.3, noise_var=0)
         self.augs = mxnet.image.CreateAugmenter(
             data_shape=(3, img_h, img_w), inter_method=10, pca_noise=0.1,
-            brightness=0.5, contrast=0.5, saturation=0.5, hue=1.0)
+            brightness=0.3, contrast=0.5, saturation=0.5, hue=1.0)
 
         self.load_png_images()
         self.load_mtv_images()
@@ -66,7 +66,7 @@ class RenderCar():
         '''
         bs = len(bg)
         ctx = self.ctx
-        label_batch = nd.ones((bs, 2, 6+self.num_cls), ctx=ctx) * (-1)
+        label_batch = nd.ones((bs, 1, 6+self.num_cls), ctx=ctx) * (-1)
         img_batch = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
         mask = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
 
@@ -177,8 +177,8 @@ class RenderCar():
 
     def load_png_images(self):
         # -------------------- load png image and path-------------------- #
-        #path = join(self.disk, 'color_material')
-        path = join(self.disk, 'no_label_car_raw_images/100')
+        path = join(self.disk, 'color_material')
+        #path = join(self.disk, 'no_label_car_raw_images/100')
         cad_path = {
             'train': join(path, 'train'),
             'valid': join(path, 'valid')}
@@ -349,7 +349,9 @@ class RenderCar():
         box_l, box_t, box_r, box_b = pil_img.getbbox()
         box_w = box_r - box_l
         box_h = box_b - box_t
+
         pil_img, r = self.pil_image_enhance(pil_img)
+
         r_box_l, r_box_t, r_box_r, r_box_b = pil_img.getbbox()
 
         return (pil_img, r_box_l, r_box_t, r_box_r, r_box_b,
@@ -463,22 +465,21 @@ def deg_2_rad(deg):
 if __name__ == '__main__':
     ctx = [gpu(0)]
     h, w = 320, 512
-
-    bg_iter = yolo_gluon.load_background('val', 10, h, w)
-    car_renderer = RenderCar(h, w, [[0, 0]], ctx[0], pre_load=False)
-    LP_generator = licence_plate_render.LPGenerator(h, w, 1)
-
     ax = yolo_cv.init_matplotlib_figure()
+
+    bg_iter = yolo_gluon.load_background('val', 1, h, w)
+    car_renderer = RenderCar(h, w, [[0, 0]], ctx[0], pre_load=False)
+    LP_generator = licence_plate_render.LPGenerator(h, w)
 
     while True:
         bg = yolo_gluon.ImageIter_next_batch(bg_iter).as_in_context(ctx[0])
-        imgs, labels1 = car_renderer.render(
+        imgs, labels = car_renderer.render(
             bg, 'valid', render_rate=0.9, pascal=np.random.randint(2))
-        L1 = labels1[0, 0]
+        L1 = labels[0, 0]
 
         imgs, L2 = LP_generator.add(imgs)
         img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
         #img = yolo_cv.cv2_add_bbox(img, L1.asnumpy(), 4)
-
-        ax.imshow(img)
+        #print(L2)
+        yolo_cv.matplotlib_show_img(ax, img)
         raw_input()

@@ -21,10 +21,12 @@ def pil_rgb_2_rgb_ndarray(pil_img, augs=None):
 
 
 def nd_inv_sigmoid(x):
+
     return -nd.log(1/x - 1)
 
 
 def batch_ndimg_2_cv2img(x):
+
     return x.transpose((0, 2, 3, 1)).asnumpy()
 
 
@@ -54,8 +56,8 @@ def split_render_data(batch, ctx):
     # >>> split_render_data(batch, ctx)
     # splitted_batches = [data0 in gpu0, data0 in gpu1]
     splitted_batch = []
+    batch_size = len(batch)
 
-    batch_size = len(batch[0])
     for i, dev in enumerate(ctx):
         start = int(i*batch_size/len(ctx))
         end = int((i+1)*batch_size/len(ctx))
@@ -70,12 +72,15 @@ def init_NN(target, weight, ctx):
     print('use pretrain weight: %s' % weight)
     try:
         target.collect_params().load(weight, ctx=ctx)
+        print('\033[1;32m')
+        print('Load Pretrain Successfully')
+
     except Exception as e:
         print('\033[1;31m')
-        print('Load Pretrain Fail')
+        print('Load Pretrain Failed')
         print(e.message.split('\n')[0])
-
         target.initialize(init=mxnet.init.Xavier(), ctx=ctx)
+
     finally:
         target.hybridize()
 
