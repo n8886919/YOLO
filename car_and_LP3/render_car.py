@@ -16,8 +16,6 @@ from yolo_modules import yolo_cv
 from yolo_modules import yolo_gluon
 from yolo_modules import licence_plate_render
 
-join = os.path.join
-
 
 class RenderCar():
     def __init__(self, img_h, img_w, classes, ctx, pre_load=False):
@@ -41,7 +39,7 @@ class RenderCar():
         self.load_mtv_images()
         self.load_pascal_images()
 
-    def render(self, bg, mode, pascal=True, render_rate=1.0):
+    def render(self, bg, mode, pascal_rate=0.0, render_rate=1.0):
         '''
         Parameters
         ----------
@@ -54,8 +52,8 @@ class RenderCar():
           use pascal_3D dataset or not
         render_rate: float
           probability of image contain a car
-        LP_rate: float
-          probability of add licence plate
+        pascal_rate: float
+          probability of use pascal dataset
 
         Returns
         ----------
@@ -75,11 +73,12 @@ class RenderCar():
                 continue
 
             r1 = np.random.uniform(low=0.9, high=1.1)
-            if pascal:
+            if np.random.rand() < pascal_rate:
                 pil_img, r_box_l, r_box_t, r_box_r, r_box_b, r, \
                     img_cls, label_distribution = self._render_pascal(mode, r1)
 
             else:
+
                 pil_img, r_box_l, r_box_t, r_box_r, r_box_b, r, \
                     img_cls, label_distribution = self._render_png(mode, r1)
 
@@ -120,22 +119,22 @@ class RenderCar():
 
             label = nd.concat(label, label_distribution, dim=-1)
             label_batch[i] = label
+
         ####################################################################
         img_batch = ((bg / 255.) * (1 - mask) + img_batch * mask)
         img_batch = nd.clip(img_batch, 0, 1)
         # 0~1 (batch_size, channels, h, w)
-
         return img_batch, label_batch
 
     def load_mtv_images(self):
         self.mtv_dataset = []
         mtv_txt = []
-        path = join(self.disk, 'muti_view_car')
+        path = _join(self.disk, 'muti_view_car')
 
-        with open(join(path, 'tripod-seq.txt'), 'r') as f:
+        with open(_join(path, 'tripod-seq.txt'), 'r') as f:
             mtv_txt = f.readlines()
 
-        with open(join(path, 'times.txt'), 'r') as f:
+        with open(_join(path, 'times.txt'), 'r') as f:
             times = f.readlines()
 
         for i, seq_times in enumerate(times):
@@ -155,14 +154,14 @@ class RenderCar():
             front_time = times[i][front_frame_idx - 1]
             ang_start = - d_ang * front_time
 
-            box_file = join(path, mtv_txt[3] % (i+1))[:-1]
+            box_file = _join(path, mtv_txt[3] % (i+1))[:-1]
             # because mtv_txt[3][-1] is \n, remove!
             box_file = np.loadtxt(box_file)
             num_images = int(mtv_txt[4].split(' ')[i])
             for j in range(num_images):
                 img_name = 'tripod_seq_%02d_%03d.jpg' % (i+1, j+1)
                 # seq and frame number are start from 1, so (i, j) += 1
-                img_path = join(path, img_name)
+                img_path = _join(path, img_name)
                 box = box_file[j]
                 frame_time = times[i][j]
                 azi = ang_start + frame_time * d_ang
@@ -177,11 +176,11 @@ class RenderCar():
 
     def load_png_images(self):
         # -------------------- load png image and path-------------------- #
-        path = join(self.disk, 'color_material')
-        #path = join(self.disk, 'no_label_car_raw_images/100')
+        path = _join(self.disk, 'color_material')
+        #path = _join(self.disk, 'no_label_car_raw_images/100')
         cad_path = {
-            'train': join(path, 'train'),
-            'valid': join(path, 'valid')}
+            'train': _join(path, 'train'),
+            'valid': _join(path, 'valid')}
         self.rawcar_dataset = {'train': [], 'valid': []}
 
         if self.pre_load:
@@ -189,8 +188,8 @@ class RenderCar():
 
         for mode in self.rawcar_dataset:
             for cad in os.listdir(cad_path[mode]):
-                for img in os.listdir(join(cad_path[mode], cad)):
-                    img_path = join(cad_path[mode], cad, img)
+                for img in os.listdir(_join(cad_path[mode], cad)):
+                    img_path = _join(cad_path[mode], cad, img)
                     if self.pre_load:
                         ele = (float(img_path.split('ele')[1].split('.')[0]) * math.pi) / (100 * 180)
                         azi = (float(img_path.split('azi')[1].split('_')[0]) * math.pi) / (100 * 180)
@@ -204,16 +203,16 @@ class RenderCar():
 
     def load_pascal_images(self):
         # -------------------- set pascal path-------------------- #
-        path = join(self.disk, 'HP_31/pascal3d_image_and_label')
-        label_path = join(path, 'car_imagenet_label')
+        path = _join(self.disk, 'HP_31/pascal3d_image_and_label')
+        label_path = _join(path, 'car_imagenet_label')
         pascal_path = {
-            'train': join(path, 'car_imagenet_train'),
-            'valid': join(path, 'car_imagenet_valid')}
+            'train': _join(path, 'car_imagenet_train'),
+            'valid': _join(path, 'car_imagenet_valid')}
 
         # -------------------- load pascal label -------------------- #
         self.pascal3d_anno = {}
         for f in os.listdir(label_path):
-            self.pascal3d_anno[f] = sio.loadmat(join(label_path, f))
+            self.pascal3d_anno[f] = sio.loadmat(_join(label_path, f))
 
         if self.pre_load:
             print('\033[1;34mLoading pascal images to RAM')
@@ -221,7 +220,7 @@ class RenderCar():
         self.pascal_dataset = {'train': [], 'valid': []}
         for mode in self.pascal_dataset:
             for img in os.listdir(pascal_path[mode]):
-                img_path = join(pascal_path[mode], img)
+                img_path = _join(pascal_path[mode], img)
                 if self.pre_load:
                     ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
                     if skip:
@@ -242,7 +241,7 @@ class RenderCar():
             self.pascal_dataset = {'train': {}, 'valid': {}}
             for data in self.pascal_dataset:
                 for img in os.listdir(pascal_path[data]):
-                    img_path = join(pascal_path[data], img)
+                    img_path = _join(pascal_path[data], img)
                     ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
                     if skip:
                         continue
@@ -260,22 +259,22 @@ class RenderCar():
             self.pascal_dataset = {'train': [], 'valid': []}
             for data in self.pascal_dataset:
                 for img in os.listdir(pascal_path[data]):
-                    img_path = join(pascal_path[data], img)
+                    img_path = _join(pascal_path[data], img)
                     self.pascal_dataset[data].append(img_path)
         '''
 
     def _render_pascal(self, mode, r1=1.0, pre_load=False):
         n = np.random.randint(len(self.pascal_dataset[mode]))
         if self.pre_load:
-            #n = self.pascal_dataset[mode].keys()[n]
-            pil_img, box, img_cls, \
-                label_distribution = self.pascal_dataset[mode][n]
+            pil_img, box, img_cls, label_distribution = \
+                self.pascal_dataset[mode][n]
 
         else:
             skip = True
             while skip:
                 img_path = self.pascal_dataset[mode][n]
                 ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
+                n = np.random.randint(len(self.pascal_dataset[mode]))
                 if not skip:
                     break
 
@@ -383,8 +382,8 @@ class RenderCar():
         '''
 
         cos_ang = np.arccos(
-            math.sin(ele) * np.sin(deg_2_rad(self.ele_label)) + \
-            math.cos(ele) * np.cos(deg_2_rad(self.ele_label)) * np.cos(azi-deg_2_rad(self.azi_label)))
+            math.sin(ele) * np.sin(_deg_2_rad(self.ele_label)) + \
+            math.cos(ele) * np.cos(_deg_2_rad(self.ele_label)) * np.cos(azi-_deg_2_rad(self.azi_label)))
 
         cos_ang = np.expand_dims(cos_ang, axis=0)
         cos_ang_gaussion = nd.exp(-nd.array(cos_ang)**2/sigma)
@@ -396,7 +395,7 @@ class RenderCar():
 
     def get_pascal3d_label(self, img_path, num_cls):
         f = img_path.split('/')[-1].split('.')[0]+'.mat'
-        #mat = sio.loadmat(join(self.pascal3d_anno, f))
+        #mat = sio.loadmat(_join(self.pascal3d_anno, f))
         mat = self.pascal3d_anno[f]
         mat = mat['record'][0][0]
 
@@ -436,7 +435,7 @@ class RenderCar():
         f = img_path.split('/')[-1].split('.')[0]+'.mat'
         # mat = sio.loadmat('/media/nolan/SSD1/
         #                   HP_31/pascal3d_image_and_label/car_imagenet_label/n03770085_6172.mat')
-        #mat = sio.loadmat(join(self.pascal3d_anno, f))
+        #mat = sio.loadmat(_join(self.pascal3d_anno, f))
         mat = self.pascal3d_anno[f]
         mat = mat['record'][0][0][1][0]
 
@@ -454,12 +453,11 @@ class RenderCar():
         return ele, azi, box, False
 
 
-def rad_2_deg(rad):
-    return rad * 180. / math.pi
-
-
-def deg_2_rad(deg):
+def _deg_2_rad(deg):
     return deg * math.pi / 180.
+
+
+_join = os.path.join
 
 
 if __name__ == '__main__':

@@ -2,7 +2,7 @@
   size: [320,512],
   layers: [1, 4, 4, 8, 8, 4],
   channels: [16, 32, 64, 128, 256, 512, 1024],
-  slice_point: [1, 5, 6, 80],
+  slice_point: [1, 3, 5, 6, 80],
   all_anchors: 
     [
       [[0.4021, 0.3156], [0.2622, 0.2326], [0.2552, 0.3742]], 
@@ -32,23 +32,27 @@
   record_step: 10000,
   valid_step: 1000, 
   batch_size: 12,
-  train_counter_start: 80001,
+  train_counter_start: 150001,
   
-  loss_name: ['score', 'box', 'rotate', 'class', 'LP_score', 'LP_pose'],
+  loss_name: 
+    [
+      'score', 'box_yx', 'box_hw', 'rotate', 'class',
+      'LP_score', 'LP_xy', 'LP_z', 'LP_r'
+    ],
   scale: 
     {
-      'score': 0.1, 'rotate': 1.0, 'class': 0.1, 'box': 1.0,
-      'LP_score': 0.1, 'LP_pose': 1.0
+      'score': 0.01, 'box_yx': 0.1, 'box_hw': 10.0, 'rotate': 1.0, 'class': 0.1,
+      'LP_score': 0.01, 'LP_xy': 10.0, 'LP_z': 10.0, 'LP_r': 1.0
     },
   learning_rate: 0.001,
   positive_weight: 10.0,
   negative_weight: 1.0,
 
   ############ Licence Plate ############
-  LP_slice_point: [1,7],
+  LP_slice_point: [1, 3, 4, 7],
   LP_positive_weight: 10.0,
   LP_negative_weight: 1.0,
-
+  LP_r_max: [30, 45, 30],
   ############ Validation ############
   pub_img: '/YOLO/img',
   pub_box: '/YOLO/box',

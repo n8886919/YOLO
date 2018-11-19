@@ -95,8 +95,11 @@ def _numpy_softmax(x):
     return np.exp(x)/np.sum(np.exp(x), axis=0)
 
 
-def cv2_add_bbox(im, b, color_idx):
-    r = -b[5]
+def cv2_add_bbox(im, b, color_idx, use_r=True):
+    # r = -b[5]
+    if not use_r:
+        r = 0
+
     im_w = im.shape[1]
     im_h = im.shape[0]
     h = b[3] * im_h

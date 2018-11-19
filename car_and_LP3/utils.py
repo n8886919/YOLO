@@ -81,7 +81,7 @@ class CarLPNet(basic_yolo.BasicYOLONet):
 
         out = [self.merge_and_slice(F, all_output[::-1], self.slice_point)] + \
             [self.merge_and_slice(F, LP_output, self.LP_slice_point)]
-        return out  # [(score, yxhw, cls_pred), (score, yxhw)]
+        return out  # [(score, yx, hw, cls_pred), (score, xy, z, r)]
 
 
 class Video():

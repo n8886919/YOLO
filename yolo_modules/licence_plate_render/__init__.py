@@ -43,7 +43,7 @@ class LPGenerator():
             self.font1[font_name] = f.resize((40, 80), PIL.Image.BILINEAR)
 
         self.project_rect_6d = ProjectRectangle6D(*self.LP_WH[0])
-        
+
         self.pil_image_enhance = yolo_cv.PILImageEnhance(
             M=0., N=0., R=0., G=1.0, noise_var=10.)
         '''
@@ -130,13 +130,13 @@ class LPGenerator():
 
         return LP.transpose((2, 0, 1)), mask, LP_label
 
-    def random_projection_LP_6D(self, LP, in_size, out_size):
+    def random_projection_LP_6D(self, LP, in_size, out_size, r_max):
         Z = np.random.uniform(low=1000., high=3000.)
         X = (Z * 8 / 30.) * np.random.uniform(low=-1, high=1)
         Y = (Z * 6 / 30.) * np.random.uniform(low=-1, high=1)
-        r1 = np.random.uniform(low=-1, high=1) * math.pi / 4.
-        r2 = np.random.uniform(low=-1, high=1) * math.pi / 4.
-        r3 = np.random.uniform(low=-1, high=1) * math.pi / 6.
+        r1 = np.random.uniform(low=-1, high=1) * r_max[0] * math.pi / 180.
+        r2 = np.random.uniform(low=-1, high=1) * r_max[1] * math.pi / 180.
+        r3 = np.random.uniform(low=-1, high=1) * r_max[2] * math.pi / 180.
 
         pose_6d = [X, Y, Z, r1, r2, r3]
         projected_points = self.project_rect_6d(pose_6d)
@@ -167,7 +167,7 @@ class LPGenerator():
 
         return mask, image, label
 
-    def add(self, bg_batch, add_rate=1.0):
+    def add(self, bg_batch, r_max, add_rate=1.0):
         ctx = bg_batch.context
         bs = bg_batch.shape[0]
         h = bg_batch.shape[2]
@@ -190,7 +190,7 @@ class LPGenerator():
                 self.project_rect_6d.camera_w)
 
             mask, image, label = self.random_projection_LP_6D(
-                LP, input_size, output_size)
+                LP, input_size, output_size, r_max)
 
             mask_batch[i] = mask.as_in_context(ctx)
             image_batch[i] = image.as_in_context(ctx)
@@ -349,6 +349,7 @@ class ProjectRectangle6D():
         self.projection_matrix = intrinsic_matrix * extrinsic_matrix
 
     def __call__(self, pose_6d):
+        # [mm, mm, mm, rad, rad, rad]
         points = np.zeros((4, 2))
         subs = {
             self.X: pose_6d[0], self.Y: pose_6d[1], self.Z: pose_6d[2],
@@ -361,20 +362,31 @@ class ProjectRectangle6D():
 
         return points.astype(np.float32)
 
-    def add_edges(self, img, pose, color_idx):
-        for i in range(3):
-            pose[i] *= 1000
-            pose[i+3] *= 0.0174533
+    def add_edges(self, img, pose, LP_size=(160, 380)):
+        corner_pts = self.__call__(pose)
 
-        points = self.__call__(pose)
         x_scale = img.shape[1] / float(self.camera_w)
         y_scale = img.shape[0] / float(self.camera_h)
-        points[:, 0] = points[:, 0] * x_scale
-        points[:, 1] = points[:, 1] * y_scale
 
-        points = np.expand_dims(points, axis=0).astype(np.int32)
-        cv2.polylines(img, points, 1, (0, 0, 1), 2)
-        return img, points
+        corner_pts[:, 0] = corner_pts[:, 0] * x_scale
+        corner_pts[:, 1] = corner_pts[:, 1] * y_scale
+        # 2----------->3
+        # ^            |
+        # |  ABC-1234  |
+        # |            |
+        # 1<-----------0
+        LP_corner = np.float32([[LP_size[1], LP_size[0]],
+                                [0, LP_size[0]],
+                                [0, 0],
+                                [LP_size[1], 0]])
+        M = cv2.getPerspectiveTransform(corner_pts, LP_corner)
+
+        clipped_LP = cv2.warpPerspective(img, M, (LP_size[1], LP_size[0]))
+
+        p = np.expand_dims(corner_pts, axis=0).astype(np.int32)
+        img = cv2.polylines(img, p, 1, (0, 0, 1), 2)
+
+        return img, clipped_LP
 
 
 if __name__ == '__main__':
