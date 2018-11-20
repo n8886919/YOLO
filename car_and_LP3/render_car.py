@@ -15,6 +15,7 @@ import PIL
 from yolo_modules import yolo_cv
 from yolo_modules import yolo_gluon
 from yolo_modules import licence_plate_render
+from yolo_modules import global_variable
 
 
 class RenderCar():
@@ -27,7 +28,7 @@ class RenderCar():
         self.ctx = ctx
         self.pre_load = pre_load
 
-        self.disk = '/media/nolan/SSD1'
+        self.disk = global_variable.training_data_path
         # -------------------- init image enhencement -------------------- #
         self.pil_image_enhance = yolo_cv.PILImageEnhance(
             M=0, N=0, R=30.0, G=0.3, noise_var=0)

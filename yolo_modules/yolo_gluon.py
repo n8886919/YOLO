@@ -3,6 +3,8 @@ import PIL
 import mxnet
 from mxnet import nd
 
+from yolo_modules import global_variable
+
 
 def pil_mask_2_rgb_ndarray(m):
     m = nd.array(m).reshape(1, m.size[1], m.size[0])
@@ -31,8 +33,8 @@ def batch_ndimg_2_cv2img(x):
 
 
 def load_background(train_or_val, bs, w, h, **kargs):
-    path = '/media/nolan/SSD1/HP_31/sun2012_' \
-        + train_or_val
+    path = global_variable.training_data_path
+    path = path + '/HP_31/sun2012_' + train_or_val
     if train_or_val == 'train':
         shuffle = True
     elif train_or_val == 'val':
@@ -69,15 +71,16 @@ def split_render_data(batch, ctx):
 
 
 def init_NN(target, weight, ctx):
+    print(global_variable.blue)
     print('use pretrain weight: %s' % weight)
     try:
         target.collect_params().load(weight, ctx=ctx)
-        print('\033[1;32m')
+        print(global_variable.green)
         print('Load Pretrain Successfully')
 
     except Exception as e:
-        print('\033[1;31m')
-        print('Load Pretrain Failed')
+        print(global_variable.red)
+        print('Load Pretrain Failed, Use Xavier initializer')
         print(e.message.split('\n')[0])
         target.initialize(init=mxnet.init.Xavier(), ctx=ctx)
 

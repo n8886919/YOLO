@@ -5,6 +5,7 @@ import sympy
 import sys
 import time
 import PIL
+import yaml
 import numpy as np
 
 import matplotlib
@@ -17,6 +18,7 @@ from mxnet import nd
 
 from yolo_modules import yolo_cv
 from yolo_modules import yolo_gluon
+from yolo_modules import global_variable
 
 
 class LPGenerator():
@@ -89,7 +91,7 @@ class LPGenerator():
                 LP.paste(self.font1[j], (x[i+3], 40))
                 label.append([j, float(x[i+3])/LP_w, float(x[i+3]+40)/LP_w])
         '''
-        return LP, label
+        return LP, LP_type, label
 
     def resize_and_paste_LP(self, LP, OCR_labels=None):
         # print(LP.size[0], LP.size[1]) # (320, 150)
@@ -175,14 +177,13 @@ class LPGenerator():
 
         mask_batch = nd.zeros_like(bg_batch)
         image_batch = nd.zeros_like(bg_batch)
-        label_batch = nd.zeros((bs, 1, 9), ctx=ctx)
-        # label_batch = nd.ones((bs, 1, 6), ctx=ctx) * -1
+        label_batch = nd.zeros((bs, 1, 10), ctx=ctx) * -1
 
         for i in range(bs):
             if np.random.rand() > add_rate:
                 continue
 
-            LP, _ = self.draw_LP()
+            LP, LP_type, _ = self.draw_LP()
 
             output_size = (h, w)
             input_size = (
@@ -194,7 +195,8 @@ class LPGenerator():
 
             mask_batch[i] = mask.as_in_context(ctx)
             image_batch[i] = image.as_in_context(ctx)
-            label_batch[i] = label
+            label_batch[i, :, :-1] = label
+            label_batch[i, :, -1] = LP_type
 
         img_batch = bg_batch * (1 - mask_batch) + image_batch * mask_batch
         img_batch = nd.clip(img_batch, 0, 1)
@@ -207,7 +209,7 @@ class LPGenerator():
         mask = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
 
         for i in range(bs):
-            LP, labels = self.draw_LP()
+            LP, LP_type, labels = self.draw_LP()
             LP_w, LP_h = LP.size
 
             resize = np.random.rand() * 0.1 + 0.9
@@ -300,13 +302,16 @@ class ProjectRectangle6D():
     def __init__(self, w, h):
         h /= 2.
         w /= 2.
+        path = global_variable.camera_parameter_path
+        with open(path) as f:
+            spec = yaml.load(f)
 
-        self.camera_w = 640
-        self.camera_h = 480
-        self.fx = 890.037231
-        self.fy = 889.150513
-        self.cx = 314.129602
-        self.cy = 220.037739
+        self.camera_w = spec['image_width']
+        self.camera_h = spec['image_height']
+        self.fx = spec['projection_matrix']['data'][0]
+        self.fy = spec['projection_matrix']['data'][5]
+        self.cx = spec['projection_matrix']['data'][2]
+        self.cy = spec['projection_matrix']['data'][6]
 
         self.X = sympy.Symbol('X')
         self.Y = sympy.Symbol('Y')
