@@ -60,7 +60,7 @@ def video_Parser():
 
     parser.add_argument(
         "--radar",
-        dest="radar", default=1, type=int,
+        dest="radar", default=0, type=int,
         help="show radar plot")
 
     parser.add_argument(

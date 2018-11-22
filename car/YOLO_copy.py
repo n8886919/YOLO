@@ -14,7 +14,7 @@ from yolo_modules.licence_plate_render import *
 
 #################### Global variables ####################
 parser = argparse.ArgumentParser(prog="python YOLO.py")
-parser.add_argument("version", help="v1")
+parser.add_argument("version", help="v2")
 parser.add_argument("mode", help="train or valid or video")
 parser.add_argument("-t", "--topic", help="ros topic to subscribe", dest="topic", default="")
 parser.add_argument("--radar", help="show radar plot", dest="radar", default=0, type=int)
@@ -28,6 +28,7 @@ if args.mode == 'train':
     ctx = [gpu(int(i)) for i in args.gpu]
 else:
     ctx = [gpu(int(args.gpu[0]))]
+
 #################### Global variables ####################
 
 def main():
@@ -48,94 +49,6 @@ def main():
 
     else: print('Parser 2 should be train or valid or video')
 
-'''
-class LP():
-    def __init__(self):
-        self.all_anchors = nd.array(spec['LP_anchors'])
-        self.step = 16
-        self.area = int(self.size[0] * self.size[1] / 16**2)
-
-        if args.mode == 'train':
-            self.loss_name = ['LP_score', 'LP_box']
-            self.nd_all_anchors = [self.all_anchors.copyto(device) for device in ctx]
-
-    def get_default_ltrb(self): 
-        n = len(self.all_anchors[0])
-        LTRB = nd.zeros((sum(self.area),n,4))
-        size = self.size
-        a_start = 0
-        #for i, anchors in enumerate(self.all_anchors): # [12*16,6*8,3*4]
-        a = self.area
-        step = float(self.step)
-        h, w = self.all_anchors.split(num_outputs=2, axis=-1)   
-
-        x_num = int(size[1]/step)
-
-        y = nd.arange(step/size[0]/2., 1, step=step/size[0], repeat=n*x_num)
-        #[[.16, .16, .16, .16],
-        # [.50, .50, .50, .50],
-        # [.83, .83, .83, .83]]
-        h = nd.tile(h.reshape(-1), a) # same shape as y
-        t = (y - 0.5*h).reshape(a, n, 1)
-        b = (y + 0.5*h).reshape(a, n, 1)
-
-        x = nd.arange(step/size[1]/2., 1, step=step/size[1], repeat=n)
-        #[1/8, 3/8, 5/8, 7/8]
-        w = nd.tile(w.reshape(-1), int(size[1]/step))
-        l = nd.tile(x - 0.5*w, int(size[0]/step)).reshape(a, n, 1)
-        r = nd.tile(x + 0.5*w, int(size[0]/step)).reshape(a, n, 1)
-
-        LTRB = nd.concat(l,t,r,b, dim=-1)
-
-        self.all_anchors_ltrb = [LTRB.copyto(device) for device in ctx]
-    
-    def find_best(self, L, gpu_index):
-        anc_ltrb = self.all_anchors_ltrb[gpu_index][:]
-        IOUs = get_iou(anc_ltrb, L, mode=2)
-        best_match = int(IOUs.reshape(-1).argmax(axis=0).asnumpy()[0]) #print(best_match)
-        best_pixel = int(best_match//len(self.all_anchors[0])) 
-        best_anchor = int(best_match%len(self.all_anchors[0]))
-
-        best_ltrb = self.all_anchors_ltrb[gpu_index][best_pixel, best_anchor].reshape(-1)
-
-        by_minus_cy = L[1] - (best_ltrb[3]+best_ltrb[1])/2
-        sigmoid_ty = by_minus_cy*self.size[0]/self.step + 0.5
-        sigmoid_ty = nd.clip(sigmoid_ty, 0.0001, 0.9999)
-        ty = nd_inv_sigmoid(sigmoid_ty)
-
-        bx_minus_cx = L[2] - (best_ltrb[2]+best_ltrb[0])/2
-        sigmoid_tx = bx_minus_cx*self.size[1]/self.step + 0.5
-        sigmoid_tx = nd.clip(sigmoid_tx, 0.0001, 0.9999)
-        tx = nd_inv_sigmoid(sigmoid_tx)
-        th = nd.log((L[3]) / self.nd_all_anchors[gpu_index][0, best_anchor, 0])
-        tw = nd.log((L[4]) / self.nd_all_anchors[gpu_index][0, best_anchor, 1])
-        return best_pixel, best_anchor, nd.concat(ty, tx, th, tw, dim=-1)
-        def loss_mask(self, labels, gpu_index):
-        """Generate training targets given predictions and labels.
-        labels: bs*object*[class, cent_y, cent_x, box_h, box_w, rotate]
-        """
-        a1 = sum(self.area)
-        bs = labels.shape[0]
-        n = len(self.all_anchors[0])
-
-        L_score = nd.zeros((bs, a0, n, 1), ctx=ctx[gpu_index])
-        L_box = nd.zeros((bs, a0, n, 4), ctx=ctx[gpu_index])
-        L_mask = nd.zeros((bs, a0, n, 1), ctx=ctx[gpu_index])
-
-        for b in range(bs):
-            label = labels[b]
-            #nd.random.shuffle(label)
-            for L in label: # all object in the image
-                if L[0] < 0: continue
-                elif L[0] == self.num_class: # LP
-                    px, anc, box = self.LP.find_best(L, gpu_index)
-                    L_mask[b, px, anc, :] = 1.0 # others are zero
-                    L_score[b, px, anc, :] = 1.0 # others are zero
-                    L_box[b, px, anc, :] = box
-
-        return [C_score, C_box, C_class], C_mask
-
-'''
 class YOLO(Video):
     def __init__(self, pretrain):
         self.version = args.version
@@ -163,7 +76,7 @@ class YOLO(Video):
         print('\033[1;33;40mArea = {}\033[0m'.format(self.area))
 
         self.backup_dir = os.path.join(self.version, 'backup')
-        self.net = CarLPNet(spec, num_sync_bn_devices=len(ctx))
+        self.net = CarNet(spec, num_sync_bn_devices=len(ctx))
         #init_NN(self.net, os.path.join(self.backup_dir, pretrain), ctx)
         init_NN(self.net, '/media/nolan/SSD1/car_and_LP2_backup/iter_107000', ctx)
         if args.mode == 'train':

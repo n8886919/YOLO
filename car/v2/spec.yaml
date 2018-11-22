@@ -24,4 +24,10 @@
   record_step: 500,
   batch_size: 30,
 
+  pub_img: '/YOLO/img',
+  pub_box: '/YOLO/box',
+
+  pub_clipped_LP: /YOLO/clipped_LP,
+  pub_LP: '/YOLO/LP',
+
 }

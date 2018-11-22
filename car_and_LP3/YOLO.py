@@ -46,7 +46,7 @@ def main():
         print('args 2 should be train or valid')
 
 
-class YOLO():
+class YOLO(object):
     def __init__(self, args):
         spec_path = os.path.join(args.version, 'spec.yaml')
         with open(spec_path) as f:
@@ -68,10 +68,14 @@ class YOLO():
         self.area = [int(h*w/step**2) for step in self.steps]
         self.ctx = [gpu(int(i)) for i in args.gpu]
 
+        self._init_syxhw()
         print(global_variable.yellow)
         print('Device = {}'.format(self.ctx))
-
         # -------------------- initialize NN-------------------- #
+        if args.version == 'v2':
+            self.spec = spec
+            return 0
+
         self.net = CarLPNet(spec, num_sync_bn_devices=len(self.ctx))
         self.backup_dir = os.path.join(args.version, 'backup')
 
@@ -89,15 +93,16 @@ class YOLO():
                 weight = 'No pretrain weight'
 
         yolo_gluon.init_NN(self.net, weight, self.ctx)
-
-        self._init_syxhw()
-
+        
         if args.mode == 'train':
             self.version = args.version
             self.record = args.record
             self._init_train()
 
-        elif args.mode == 'valid':
+        if args.mode == 'valid' or args.mode == 'export':
+            self.export_file = args.version + '/export/YOLO_export'
+            self.car_threshold = 0.9
+            self.LP_threshold = 0.9
             self._init_executor(use_tensor_rt=args.tensorrt)
 
     # -------------------- Training Part -------------------- #
@@ -552,8 +557,9 @@ class YOLO():
 
     # -------------------- Validation Part -------------------- #
     def _init_executor(self, use_tensor_rt=False):
+        print('checkpoint file: %s' % self.export_file)
         sym, arg_params, aux_params = mx.model.load_checkpoint(
-            'export/YOLO_export', 0)
+            self.export_file, 0)
 
         if use_tensor_rt:
             print('Building TensorRT engine')
@@ -748,7 +754,7 @@ class YOLO():
             imgs, labels = car_renderer.render(bg, 'valid', pascal_rate=0.5, render_rate=0.9)
             imgs, LP_labels = LP_generator.add(imgs, self.LP_r_max, add_rate=0.8)
 
-            outs = self.predict(imgs, LP=True, mode=1)
+            outs = self.predict(imgs, LP=True, bind=1)
             # outs[car or LP][batch]
             img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
             img, clipped_LP = LP_generator.project_rect_6d.add_edges(
@@ -766,7 +772,8 @@ class YOLO():
         batch_shape = (1, 3, self.size[0], self.size[1])
         data = nd.zeros(batch_shape).as_in_context(self.ctx[0])
         self.net.forward(data)
-        self.net.export('export/YOLO_export')
+        print('export model to: %s' % self.export_file)
+        self.net.export(self.export_file)
 
 
 '''

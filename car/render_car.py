@@ -11,6 +11,7 @@ from mxnet import nd
 import PIL
 
 from yolo_modules import pil_image_enhancement
+from yolo_modules import global_variable
 
 rad_2_deg = lambda rad: rad * 180. / math.pi
 deg_2_rad = lambda deg: deg * math.pi / 180.
@@ -30,8 +31,8 @@ class RenderCar():
             inter_method=10, brightness=0.5, contrast=0.5, saturation=0.5, hue=1.0, pca_noise=0.1)
 
         self.rawcar_dataset = {'train':[], 'valid':[]}
-        raw_car_train_path = '/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/HP_31/rawcar24/rawcar_train'
-        raw_car_valid_path = '/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/HP_31/rawcar24/rawcar_valid'
+        raw_car_train_path = global_variable.training_data_path + '/HP_31/rawcar24/rawcar_train'
+        raw_car_valid_path = global_variable.training_data_path + '/HP_31/rawcar24/rawcar_valid'
         for file in os.listdir(raw_car_train_path):
             for img in os.listdir(os.path.join(raw_car_train_path, file)):
                 img_path = os.path.join(raw_car_train_path, file, img)

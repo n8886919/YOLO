@@ -55,7 +55,6 @@ class CarLPNet(basic_yolo.BasicYOLONet):
 
             if end:
                 break
-
             # add transition layers
             x = self.transitions[i](x)
 

@@ -1,7 +1,7 @@
 import copy
 import cv2
 import threading
-
+import sys
 import rospy
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
@@ -16,7 +16,14 @@ from yolo_modules import licence_plate_render
 from yolo_modules import global_variable
 
 from utils import *
-from YOLO import *
+
+if sys.argv[1] == 'v2':
+    print(global_variable.cyan)
+    print('load car_and_LP v2')
+    from car.YOLO import *
+
+else:
+    from YOLO import *
 
 
 def main():
@@ -54,12 +61,11 @@ class Video():
         self.clip = (args.clip_h, args.clip_h)
         self.ctx = [gpu(int(i)) for i in args.gpu][0]
 
-        self.car_threshold = 0.9
-        self.LP_threshold = 0.9
 
         #self.resz = mxnet.image.ForceResizeAug((self.yolo.size[1], self.yolo.size[0]))
         if self.radar:
-            self.radar_prob = yolo_cv.RadarProb(self.num_class, self.classes)
+            self.radar_prob = yolo_cv.RadarProb(
+                self.yolo.num_class, self.yolo.classes)
 
         print(global_variable.cyan)
         if self.dev == 'ros':
@@ -188,7 +194,7 @@ class Video():
             self.radar_prob.plot3d(Cout[0], Cout[-self.num_class:])
 
         # -------------------- Licence Plate -------------------- #
-        if LP_out[0] > self.LP_threshold and self.LP:
+        if LP_out[0] > self.yolo.LP_threshold and self.LP:
             img, clipped_LP = self.project_rect_6d.add_edges(img, LP_out[1:])
             self.clipped_LP_pub.publish(
                 self.bridge.cv2_to_imgmsg(clipped_LP, 'bgr8'))
@@ -197,7 +203,7 @@ class Video():
                 cv2.imshow('Licence Plate', clipped_LP)
 
         # -------------------- vehicle -------------------- #
-        if Cout[0] > self.car_threshold and self.car:
+        if Cout[0] > self.yolo.car_threshold and self.car:
             yolo_cv.cv2_add_bbox(img, Cout, 4, use_r=False)
 
         if self.show:
@@ -212,11 +218,11 @@ class Video():
         self.mat1.data = [-1] * 7
         self.mat2.data = [-1] * 8
 
-        if Cout[0] > self.car_threshold:
+        if Cout[0] > self.yolo.car_threshold:
             for i in range(6):
                 self.mat1.data[i] = Cout[i]
 
-        if LP_out[0] > self.LP_threshold:
+        if LP_out[0] > self.yolo.LP_threshold:
             for i in range(7):
                 self.mat2.data[i] = LP_out[i]
         self.car_pub.publish(self.mat1)
