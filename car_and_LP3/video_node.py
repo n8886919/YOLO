@@ -58,7 +58,7 @@ class Video():
         self.LP = args.LP
         self.car = args.car
         self.flip = args.flip
-        self.clip = (args.clip_h, args.clip_h)
+        self.clip = (args.clip_h, args.clip_w)
         self.ctx = [gpu(int(i)) for i in args.gpu][0]
 
 
@@ -133,7 +133,6 @@ class Video():
 
     def cv2_flip_and_clip_frame(self, img):
         h, w = self.yolo.size
-        img = cv2.resize(img, (w, h))
 
         clip = self.clip
         assert type(clip) == tuple and len(clip) == 2, (
@@ -155,6 +154,8 @@ class Video():
             # flip = 1: left-right
             # flip = 0: top-down
             # flip = -1: 1 && 0
+
+        img = cv2.resize(img, (w, h))
         return img
 
     def _get_frame(self):

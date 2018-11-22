@@ -10,7 +10,7 @@ from mxnet import nd
 
 import PIL
 
-from yolo_modules import pil_image_enhancement
+from yolo_modules import yolo_cv
 from yolo_modules import global_variable
 
 rad_2_deg = lambda rad: rad * 180. / math.pi
@@ -26,8 +26,8 @@ class RenderCar():
         self.ctx = ctx
         self.BIL = PIL.Image.BILINEAR
 
-        self.pil_image_enhance = pil_image_enhancement.PILImageEnhance(M=0, N=0, R=30.0, G=0.3, noise_var=0)
-        self.augs = mxnet.image.CreateAugmenter(data_shape=(3, img_h, img_w),   
+        self.pil_image_enhance = yolo_cv.pil_image_enhancement.PILImageEnhance(M=0, N=0, R=30.0, G=0.3, noise_var=0)
+        self.augs = mxnet.image.CreateAugmenter(data_shape=(3, img_h, img_w),
             inter_method=10, brightness=0.5, contrast=0.5, saturation=0.5, hue=1.0, pca_noise=0.1)
 
         self.rawcar_dataset = {'train':[], 'valid':[]}

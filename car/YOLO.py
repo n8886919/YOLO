@@ -59,7 +59,7 @@ class YOLO(car_and_LP3_YOLO):
         if args.mode == 'export':
             self.net = CarLPNet(self.spec, num_sync_bn_devices=len(self.ctx))
             yolo_gluon.init_NN(
-            self.net, '/home/nolan/Desktop/YOLO/car/v2/backup/iter_107000', self.ctx)
+            self.net, 'v2/backup/iter_107000', self.ctx)
         elif args.mode == 'valid':
             self._init_executor(use_tensor_rt=args.tensorrt)
 
