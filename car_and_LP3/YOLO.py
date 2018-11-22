@@ -19,6 +19,9 @@ from yolo_modules import global_variable
 from utils import *
 from render_car import *
 
+os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
+os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
+
 
 def main():
     args = yolo_Parser()
@@ -29,6 +32,9 @@ def main():
 
     elif args.mode == 'valid':
         yolo.valid()
+
+    elif args.mode == 'export':
+        yolo.export()
 
     elif args.mode == 'kmean':
         yolo.get_default_anchors()
@@ -64,12 +70,6 @@ class YOLO():
 
         print(global_variable.yellow)
         print('Device = {}'.format(self.ctx))
-        print('Step = {}'.format(self.steps))
-        print('Area = {}'.format(self.area))
-        for k in self.loss_name:
-            print('%s: %s10^(%.1f)%s' % (
-                k, global_variable.blue, math.log10(self.scale[k]),
-                global_variable.yellow))
 
         # -------------------- initialize NN-------------------- #
         self.net = CarLPNet(spec, num_sync_bn_devices=len(self.ctx))
@@ -90,14 +90,15 @@ class YOLO():
 
         yolo_gluon.init_NN(self.net, weight, self.ctx)
 
-        #mx.contrib.tensorrt.set_use_tensorrt(1)
-        #self.net = mx.contrib.tensorrt.tensorrt_bind(self.net, self.ctx[0], self.net.collect_params())
+        self._init_syxhw()
 
-        self._init_valid()
         if args.mode == 'train':
             self.version = args.version
             self.record = args.record
             self._init_train()
+
+        elif args.mode == 'valid':
+            self._init_executor(use_tensor_rt=args.tensorrt)
 
     # -------------------- Training Part -------------------- #
     def _init_train(self):
@@ -106,9 +107,15 @@ class YOLO():
         self.batch_size *= len(self.ctx)
 
         print(global_variable.yellow)
-        print(self.exp)
+        print('Training Title = {}'.format(self.exp))
         print('Batch Size = {}'.format(self.batch_size))
         print('Record Step = {}'.format(self.record_step))
+        print('Step = {}'.format(self.steps))
+        print('Area = {}'.format(self.area))
+        for k in self.loss_name:
+            print('%s%s: 10^%s%d' % (
+                global_variable.blue, k, global_variable.yellow,
+                math.log10(self.scale[k])))
 
         self.backward_counter = self.train_counter_start
 
@@ -117,6 +124,7 @@ class YOLO():
 
         self._get_default_ltrb()
 
+        #self.Huber_loss = gluon.loss.HuberLoss()
         self.L1_loss = gluon.loss.L1Loss()
         self.L2_loss = gluon.loss.L2Loss()
         self.LG_loss = gluon.loss.LogisticLoss(label_format='binary')
@@ -176,7 +184,7 @@ class YOLO():
     def _find_best(self, L, gpu_index):
         IOUs = yolo_gluon.get_iou(self.all_anchors_ltrb[gpu_index], L, mode=2)
         best_match = int(IOUs.reshape(-1).argmax(axis=0).asnumpy()[0])
-        # print(best_match)
+        #print(best_match)
         best_pixel = int(best_match // len(self.all_anchors[0]))
         best_anchor = int(best_match % len(self.all_anchors[0]))
 
@@ -194,9 +202,9 @@ class YOLO():
                 pyramid_layer = i
                 break
         '''
-        print('best_pixel = %d'%best_pixel)
-        print('best_anchor = %d'%best_anchor)
-        print('pyramid_layer = %d'%pyramid_layer)
+        print('best_pixel = %d' % best_pixel)
+        print('best_anchor = %d' % best_anchor)
+        print('pyramid_layer = %d' % pyramid_layer)
         '''
         step = self.steps[pyramid_layer]
 
@@ -213,25 +221,6 @@ class YOLO():
         th = nd.log((L[3]) / self.nd_all_anchors[gpu_index][pyramid_layer, best_anchor, 0])
         tw = nd.log((L[4]) / self.nd_all_anchors[gpu_index][pyramid_layer, best_anchor, 1])
         return best_pixel, best_anchor, nd.concat(ty, tx, th, tw, dim=-1)
-
-    def _find_best_LP(self, L, gpu_index):
-        x = np.clip(int(L[7].asnumpy()/16), 0, 31)
-        y = np.clip(int(L[8].asnumpy()/16), 0, 19)
-        best_pixel = y*32 + x
-
-        t_X = L[1] / 1000.
-        t_Y = L[2] / 1000.
-        t_Z = nd.log(L[3]/1000.)
-
-        r1_max = self.LP_r_max[0] * 2 * math.pi / 180.
-        r2_max = self.LP_r_max[1] * 2 * math.pi / 180.
-        r3_max = self.LP_r_max[2] * 2 * math.pi / 180.
-
-        t_r1 = yolo_gluon.nd_inv_sigmoid(L[4] / r1_max + 0.5)
-        t_r2 = yolo_gluon.nd_inv_sigmoid(L[5] / r2_max + 0.5)
-        t_r3 = yolo_gluon.nd_inv_sigmoid(L[6] / r3_max + 0.5)
-
-        return best_pixel, 0, nd.concat(t_X, t_Y, t_Z, t_r1, t_r2, t_r3, dim=-1)
 
     def _loss_mask(self, label_batch, gpu_index):
         """Generate training targets given predictions and label_batch.
@@ -264,6 +253,25 @@ class YOLO():
                     C_class[b, px, anc, :] = L[6:]
 
         return [C_score, C_box_yx, C_box_hw, C_rotate, C_class], C_mask
+
+    def _find_best_LP(self, L, gpu_index):
+        x = np.clip(int(L[7].asnumpy()/16), 0, 31)
+        y = np.clip(int(L[8].asnumpy()/16), 0, 19)
+        best_pixel = y*32 + x
+
+        t_X = L[1] / 1000.
+        t_Y = L[2] / 1000.
+        t_Z = nd.log(L[3]/1000.)
+        r1_max = self.LP_r_max[0] * 2 * math.pi / 180.
+        r2_max = self.LP_r_max[1] * 2 * math.pi / 180.
+        r3_max = self.LP_r_max[2] * 2 * math.pi / 180.
+
+        t_r1 = yolo_gluon.nd_inv_sigmoid(L[4] / r1_max + 0.5)
+        t_r2 = yolo_gluon.nd_inv_sigmoid(L[5] / r2_max + 0.5)
+        t_r3 = yolo_gluon.nd_inv_sigmoid(L[6] / r3_max + 0.5)
+
+        label = nd.concat(t_X, t_Y, t_Z, t_r1, t_r2, t_r3, dim=-1)
+        return best_pixel, 0, label
 
     def _loss_mask_LP(self, label_batch, gpu_index):
         """Generate training targets given predictions and label_batch.
@@ -350,6 +358,7 @@ class YOLO():
 
                     car_loss = self._get_loss(
                         'car', x, y, s_weight, mask, car_rotate=car_rotate)
+
                     all_gpu_loss[gpu_i].extend(car_loss)
 
                 if LP_bys is not None:
@@ -363,6 +372,7 @@ class YOLO():
                     all_gpu_loss[gpu_i].extend(LP_loss)
 
                 sum(all_gpu_loss[gpu_i]).backward()
+
         self.trainer.step(self.batch_size)
 
         if self.record:
@@ -383,7 +393,7 @@ class YOLO():
         self.bg_iter_valid = yolo_gluon.load_background('val', self.iou_bs, h, w)
         self.bg_iter_train = yolo_gluon.load_background('train', self.batch_size, h, w)
 
-        self.car_renderer = RenderCar(h, w, self.classes, self.ctx[0], pre_load=False)
+        self.car_renderer = RenderCar(h, w, self.classes, self.ctx[0], pre_load=True)
         LP_generator = licence_plate_render.LPGenerator(h, w)
 
         # -------------------- main loop -------------------- #
@@ -396,7 +406,7 @@ class YOLO():
             imgs, labels = self.car_renderer.render(
                 bg, 'train', render_rate=0.5, pascal_rate=0.1)
 
-            imgs, LP_labels = LP_generator.add(imgs)
+            imgs, LP_labels = LP_generator.add(imgs, self.LP_r_max, add_rate=0.5)
 
             batch_xs = yolo_gluon.split_render_data(imgs, self.ctx)
             car_batch_ys = yolo_gluon.split_render_data(labels, self.ctx)
@@ -406,17 +416,16 @@ class YOLO():
 
             # -------------------- show training image # --------------------
             '''
-            img = batch_ndimg_2_cv2img(batch_xs[0])[0]
-            img = cv2_add_bbox(img, batch_ys[0][0, 0].asnumpy(), 4)
+            img = yolo_gluon.batch_ndimg_2_cv2img(batch_xs[0])[0]
+            img = yolo_cv.cv2_add_bbox(img, car_batch_ys[0][0, 0].asnumpy(), 4, use_r=0)
             yolo_cv.matplotlib_show_img(ax, img)
-            print(batch_ys[0][0])
+            print(car_batch_ys[0][0])
             raw_input()
             '''
 
     def render_and_train2(self):
-        print(global_variable.green)
-        print('Render And Train(Double Threads)')
-        print(global_variable.reset_color)
+        print(global_variable.cyan)
+        print('Render And Train (Double Threads)')
 
         self.rendering_done = False
         self.training_done = True
@@ -438,14 +447,13 @@ class YOLO():
         while not self.shutdown_training:
             if not self.rendering_done:
                 # training images are not ready
-                #print('rendering not done')
+                #print('rendering')
                 time.sleep(0.01)
                 continue
 
             batch_xs = self.imgs.copy()
             car_batch_ys = self.labels.copy()
             LP_batch_ys = self.LP_labels.copy()
-
             batch_xs = yolo_gluon.split_render_data(batch_xs, self.ctx)
             car_batch_ys = yolo_gluon.split_render_data(car_batch_ys, self.ctx)
             LP_batch_ys = yolo_gluon.split_render_data(LP_batch_ys, self.ctx)
@@ -455,13 +463,20 @@ class YOLO():
 
     def _render_thread(self):
         h, w = self.size
-        self.car_renderer = RenderCar(h, w, self.classes, self.ctx[0], pre_load=False)
-        self.bg_iter_valid = yolo_gluon.load_background('val', self.iou_bs, h, w)
-        bg_iter_train = yolo_gluon.load_background('train', self.batch_size, h, w)
+        self.car_renderer = RenderCar(
+            h, w, self.classes, self.ctx[0], pre_load=True)
+
+        self.bg_iter_valid = yolo_gluon.load_background(
+            'val', self.iou_bs, h, w)
+
+        bg_iter_train = yolo_gluon.load_background(
+            'train', self.batch_size, h, w)
+
         LP_generator = licence_plate_render.LPGenerator(h, w)
 
         self.LP_labels = nd.array([0])
         self.labels = nd.array([0])
+
         while not self.shutdown_training:
             if self.rendering_done:
                 #print('render done')
@@ -474,7 +489,6 @@ class YOLO():
                 bg = bg.as_in_context(self.ctx[0])
 
             # change an other batch of background
-            #pascal_rate = np.random.randint(2)
             imgs, self.labels = self.car_renderer.render(
                 bg, 'train', render_rate=0.5, pascal_rate=0.2)
 
@@ -492,7 +506,7 @@ class YOLO():
                 bg = bg.data[0].as_in_context(self.ctx[0])
                 imgs, labels = self.car_renderer.render(
                     bg, 'valid', pascal_rate=pascal_rate)
-                outs, _ = self.predict(imgs)
+                outs, _ = self.predict(imgs, mode=0)
 
                 pred = nd.zeros((self.iou_bs, 4))
                 pred[:, 0] = outs[:, 2] - outs[:, 4] / 2
@@ -537,8 +551,35 @@ class YOLO():
             self.net.collect_params().save(save_model)
 
     # -------------------- Validation Part -------------------- #
-    def _init_valid(self):
+    def _init_executor(self, use_tensor_rt=False):
+        sym, arg_params, aux_params = mx.model.load_checkpoint(
+            'export/YOLO_export', 0)
+
+        if use_tensor_rt:
+            print('Building TensorRT engine')
+            os.environ['MXNET_USE_TENSORRT'] = '1'
+
+            arg_params.update(aux_params)
+            all_params = dict([(k, v.as_in_context(self.ctx[0])) for k, v in arg_params.items()])
+            self.executor = mx.contrib.tensorrt.tensorrt_bind(
+                sym,
+                all_params=all_params,
+                ctx=self.ctx[0],
+                data=(1, 3, self.size[0], self.size[1]),
+                grad_req='null',
+                force_rebind=True)
+
+        else:
+            self.executor = sym.simple_bind(
+                ctx=self.ctx[0],
+                data=(1, 3, self.size[0], self.size[1]),
+                grad_req='null',
+                force_rebind=True)
+            self.executor.copy_params_from(arg_params, aux_params)
+
+    def _init_syxhw(self):
         size = self.size
+
         n = len(self.all_anchors[0])  # anchor per sub_map
         ctx = self.ctx[0]
         self.s = nd.zeros((1, sum(self.area), n, 1), ctx=ctx)
@@ -586,8 +627,14 @@ class YOLO():
         b = by + bh2
         return nd.concat(l, t, r, b, dim=-1)
 
-    def predict(self, x, LP=False):
-        batch_out, LP_batch_out = self.net(x)
+    def predict(self, x, LP=False, bind=0):
+        if not bind:
+            batch_out, LP_batch_out = self.net(x)
+
+        else:
+            out = self.executor.forward(is_train=False, data=x)
+            batch_out = out[:5]
+            LP_batch_out = out[5:]
 
         batch_score = nd.sigmoid(batch_out[0])
         batch_box = nd.concat(batch_out[1], batch_out[2], dim=-1)
@@ -652,29 +699,37 @@ class YOLO():
         return data_out
 
     def get_default_anchors(self):
-        import module.IOU_Kmeans as kmeans
-        bs = 2000
-        addLP = AddLP(self.size[0], self.size[1], self.num_class)
-        car_renderer = RenderCar(
-            bs, self.size[0], self.size[1], self.classes, self.ctx[0])
+        import yolo_modules.iou_kmeans as kmeans
+        print(global_variable.cyan)
+        print('KMeans Get Default Anchors')
+        bs = 5000
+        h, w = self.size
+        car_renderer = RenderCar(h, w, self.classes,
+                                 self.ctx[0], pre_load=False)
+        labels = nd.zeros((bs, 2))
+        for i in range(bs):
+            bg = nd.zeros((1, 3, h, w), ctx=self.ctx[0])  # b*RGB*h*w
+            img, label = car_renderer.render(
+                bg, 'train', pascal_rate=0.2, render_rate=1.0)
 
-        BG = nd.zeros((bs, 3, 320, 512), ctx=self.ctx[0])  # b*RGB*h*w
-        img, label = car_renderer.render(BG, prob=1.0)
-        #img, label = addLP.add(img, label)
-        label = label.reshape(-1, 6)[:, 3:5]
+            labels[i] = label[0, 0, 3:5]
 
-        ans = kmeans.main(label, 9)
-        print(ans)
+            if i % 1000 == 0:
+                print(i/float(bs))
+
+        ans = kmeans.main(labels, 9)
         for a in ans:
-            b = a.asnumpy()
-            print(b[0]*b[1])
+            a = a.asnumpy()
+            # anchor areas, for sort
+            print('[h, w] = [%.4f, %.4f], area = %.2f' % (
+                a[0], a[1], a[0]*a[1]))
+
         while 1:
             time.sleep(0.1)
 
     def valid(self):
-        print(global_variable.green)
+        print(global_variable.cyan)
         print('Valid')
-        print(global_variable.reset_color)
 
         bs = 1
         h, w = self.size
@@ -683,8 +738,9 @@ class YOLO():
         radar_prob = yolo_cv.RadarProb(self.num_class, self.classes)
 
         BG_iter = yolo_gluon.load_background('val', bs, h, w)
-        car_renderer = RenderCar(h, w, self.classes, self.ctx[0])
         LP_generator = licence_plate_render.LPGenerator(h, w)
+        car_renderer = RenderCar(h, w, self.classes,
+                                 self.ctx[0], pre_load=False)
 
         for bg in BG_iter:
             bg = bg.data[0].as_in_context(self.ctx[0])  # b*RGB*w*h
@@ -692,7 +748,7 @@ class YOLO():
             imgs, labels = car_renderer.render(bg, 'valid', pascal_rate=0.5, render_rate=0.9)
             imgs, LP_labels = LP_generator.add(imgs, self.LP_r_max, add_rate=0.8)
 
-            outs = self.predict(imgs, LP=True)
+            outs = self.predict(imgs, LP=True, mode=1)
             # outs[car or LP][batch]
             img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
             img, clipped_LP = LP_generator.project_rect_6d.add_edges(
@@ -705,6 +761,12 @@ class YOLO():
             yolo_cv.matplotlib_show_img(ax1, img)
             yolo_cv.matplotlib_show_img(ax2, clipped_LP)
             raw_input('next')
+
+    def export(self):
+        batch_shape = (1, 3, self.size[0], self.size[1])
+        data = nd.zeros(batch_shape).as_in_context(self.ctx[0])
+        self.net.forward(data)
+        self.net.export('export/YOLO_export')
 
 
 '''

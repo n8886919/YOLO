@@ -19,7 +19,7 @@ from yolo_modules import global_variable
 
 
 class RenderCar():
-    def __init__(self, img_h, img_w, classes, ctx, pre_load=False):
+    def __init__(self, img_h, img_w, classes, ctx, pre_load=True):
         self.h = img_h
         self.w = img_w
         self.num_cls = len(classes)
@@ -39,6 +39,7 @@ class RenderCar():
         self.load_png_images()
         self.load_mtv_images()
         self.load_pascal_images()
+        print(global_variable.reset_color)
 
     def render(self, bg, mode, pascal_rate=0.0, render_rate=1.0):
         '''
@@ -65,9 +66,10 @@ class RenderCar():
         '''
         bs = len(bg)
         ctx = self.ctx
-        label_batch = nd.ones((bs, 1, 6+self.num_cls), ctx=ctx) * (-1)
-        img_batch = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
+
         mask = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
+        img_batch = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
+        label_batch = nd.ones((bs, 1, 6+self.num_cls), ctx=ctx) * (-1)
 
         for i in range(bs):
             if np.random.rand() > render_rate:
@@ -184,14 +186,14 @@ class RenderCar():
             'valid': _join(path, 'valid')}
         self.rawcar_dataset = {'train': [], 'valid': []}
 
-        if self.pre_load:
+        if False:  # self.pre_load:
             print('\033[1;34mLoading png images to RAM')
 
         for mode in self.rawcar_dataset:
             for cad in os.listdir(cad_path[mode]):
                 for img in os.listdir(_join(cad_path[mode], cad)):
                     img_path = _join(cad_path[mode], cad, img)
-                    if self.pre_load:
+                    if False:  # self.pre_load:
                         ele = (float(img_path.split('ele')[1].split('.')[0]) * math.pi) / (100 * 180)
                         azi = (float(img_path.split('azi')[1].split('_')[0]) * math.pi) / (100 * 180)
                         img_cls, label_distribution = self.get_label_dist(ele, azi)
@@ -216,7 +218,8 @@ class RenderCar():
             self.pascal3d_anno[f] = sio.loadmat(_join(label_path, f))
 
         if self.pre_load:
-            print('\033[1;34mLoading pascal images to RAM')
+            print(global_variable.yellow)
+            print('Loading pascal images to RAM')
         # -------------------- load pascal image -------------------- #
         self.pascal_dataset = {'train': [], 'valid': []}
         for mode in self.pascal_dataset:
@@ -235,36 +238,10 @@ class RenderCar():
                          label_distribution])
                 else:
                     self.pascal_dataset[mode].append(img_path)
-        '''
-        if self.pre_load:
-            print('\033[1;34mLoading pascal images to RAM')
-            
-            self.pascal_dataset = {'train': {}, 'valid': {}}
-            for data in self.pascal_dataset:
-                for img in os.listdir(pascal_path[data]):
-                    img_path = _join(pascal_path[data], img)
-                    ele, azi, box, skip = self.get_pascal3d_azi_ele(img_path)
-                    if skip:
-                        continue
+        print(global_variable.green)
+        print('Loading pascal images to RAM Done')
 
-                    img_cls, label_distribution = self.get_label_dist(ele, azi)
-                    self.pascal_dataset[data][img] = [
-                        PIL.Image.open(img_path).convert('RGBA'),
-                        box,
-                        img_cls,
-                        label_distribution]
-
-            print('\033[1;34mDone')
-
-        else:
-            self.pascal_dataset = {'train': [], 'valid': []}
-            for data in self.pascal_dataset:
-                for img in os.listdir(pascal_path[data]):
-                    img_path = _join(pascal_path[data], img)
-                    self.pascal_dataset[data].append(img_path)
-        '''
-
-    def _render_pascal(self, mode, r1=1.0, pre_load=False):
+    def _render_pascal(self, mode, r1=1.0):
         n = np.random.randint(len(self.pascal_dataset[mode]))
         if self.pre_load:
             pil_img, box, img_cls, label_distribution = \
@@ -290,8 +267,8 @@ class RenderCar():
         w_max_scale = 0.9 * self.w / box_w
         h_max_scale = 0.9 * self.h / box_h
 
-        w_min_scale = 0.3 * self.w / float(box_w)
-        h_min_scale = 0.3 * self.h / float(box_h)
+        w_min_scale = 0.25 * self.w / float(box_w)
+        h_min_scale = 0.25 * self.h / float(box_h)
 
         max_scale = min(w_max_scale, h_max_scale)
         min_scale = max(w_min_scale, h_min_scale)
@@ -329,7 +306,7 @@ class RenderCar():
         n = np.random.randint(len(self.rawcar_dataset[mode]))
         #n = str(n)
 
-        if self.pre_load:
+        if False:  # self.pre_load:
             #n = self.pascal_dataset[mode].keys()[n]
             pil_img, img_cls, label_distribution = self.png_dataset[mode][n]
 
@@ -340,7 +317,7 @@ class RenderCar():
             img_cls, label_distribution = self.get_label_dist(ele, azi)
             pil_img = PIL.Image.open(img_path).convert('RGBA')
 
-        min_scale = 0.3
+        min_scale = 0.25
         max_scale = 1.0
 
         resize, resize_w, resize_h, pil_img = self._resize(

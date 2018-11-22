@@ -177,7 +177,7 @@ class LPGenerator():
 
         mask_batch = nd.zeros_like(bg_batch)
         image_batch = nd.zeros_like(bg_batch)
-        label_batch = nd.zeros((bs, 1, 10), ctx=ctx) * -1
+        label_batch = nd.ones((bs, 1, 10), ctx=ctx) * (-1)
 
         for i in range(bs):
             if np.random.rand() > add_rate:

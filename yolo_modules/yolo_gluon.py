@@ -71,7 +71,7 @@ def split_render_data(batch, ctx):
 
 
 def init_NN(target, weight, ctx):
-    print(global_variable.blue)
+    #print(global_variable.blue)
     print('use pretrain weight: %s' % weight)
     try:
         target.collect_params().load(weight, ctx=ctx)

@@ -7,3 +7,5 @@
 **/backup/**
 **/video/**
 **/test_image
+**.params
+**.json

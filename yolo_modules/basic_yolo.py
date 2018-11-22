@@ -6,12 +6,7 @@ from gluoncv.model_zoo.yolo.yolo3 import YOLODetectionBlockV3, _upsample
 class BasicYOLONet(gluon.HybridBlock):
     def __init__(self, spec, num_sync_bn_devices, **kwargs):
         super(BasicYOLONet, self).__init__(**kwargs)
-        '''
-        assert net_vsersion in specs, (
-            "Invalid net version: {}. Options are {}".format(
-            net_version, str(specs.keys())))
-        spec = specs[net_vsersion]
-        '''
+
         layers = spec['layers']
         channels = spec['channels']
 
@@ -42,16 +37,6 @@ class BasicYOLONet(gluon.HybridBlock):
 
         self.num_pyrmaid_layers = len(anchors)
 
-    def merge_and_slice(self, F, all_output, points):
-        output = F.concat(*all_output, dim=1)
-        i = 0
-        x = []
-        for pt in points:
-            x.append(output.slice_axis(begin=i, end=pt, axis=-1))
-            i = pt
-
-        return x
-
     def hybrid_forward(self, F, x, *args):
         routes = []
         all_output = []
@@ -75,7 +60,18 @@ class BasicYOLONet(gluon.HybridBlock):
             upsample = _upsample(x, stride=2)
             x = F.concat(upsample, routes[::-1][i + 1], dim=1)
 
-        return self.merge_and_slice(F, all_output, self.slice_point)#score, yxhw, cls_pred
+        return self.merge_and_slice(F, all_output, self.slice_point)
+        # score, yxhw, cls_pred
+
+    def merge_and_slice(self, F, all_output, points):
+        output = F.concat(*all_output, dim=1)
+        i = 0
+        x = []
+        for pt in points:
+            x.append(output.slice_axis(begin=i, end=pt, axis=-1))
+            i = pt
+
+        return x
 
     def test(self, h, w):
         from mxnet import init, nd

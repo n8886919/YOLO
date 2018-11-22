@@ -92,31 +92,8 @@ def matplotlib_show_img(ax, img):
 
 
 def _numpy_softmax(x):
+
     return np.exp(x)/np.sum(np.exp(x), axis=0)
-
-
-def cv2_flip_and_clip_frame(img, flip=3, clip=(1., 1.)):
-    # Maybe some BUG here, Not tested yet
-    assert type(clip) == tuple and len(type) == 2, (
-        global_variable.red +
-        'clip should be a tuple, (height_ratio, width_ratio')
-    if clip[0] < 1:
-        top = int((1-clip[0]) * img.shape[0] / 2.)
-        bot = img.shape[0] - top
-        img = img[top:bot]
-
-    if clip[1] < 1:
-        left = int((1-clip[1]) * img.shape[1] / 2.)
-        right = img.shape[1] - left
-        img = img[:, left:right]
-
-    if flip == 1 or flip == 0 or flip == -1:
-        img = cv2.flip(img, flip)
-        # flip = 1: left-right
-        # flip = 0: top-down
-        # flip = -1: 1 + 0
-
-    return img
 
 
 def cv2_add_bbox(im, b, color_idx, use_r=True):
@@ -142,13 +119,13 @@ def cv2_add_bbox(im, b, color_idx, use_r=True):
 def cv2_add_bbox_text(img, p, text, c):
     size = img.shape
     c = _color[c % len(_color)]
-    l = min(max(int(p[1] * size[1]), 0), size[1])
-    t = min(max(int(p[2] * size[0]), 0), size[0])
-    r = min(max(int(p[3] * size[1]), 0), size[1])
-    b = min(max(int(p[4] * size[0]), 0), size[0])
-    cv2.rectangle(img, (l, t), (r, b), c, 2)
+    left = min(max(int(p[1] * size[1]), 0), size[1])
+    top = min(max(int(p[2] * size[0]), 0), size[0])
+    right = min(max(int(p[3] * size[1]), 0), size[1])
+    bottom = min(max(int(p[4] * size[0]), 0), size[0])
+    cv2.rectangle(img, (left, top), (right, bottom), c, 2)
     cv2.putText(img, '%s %.3f' % (text, p[0]),
-                (l, t-10), 2, 1, c, 2)
+                (left, top-10), 2, 1, c, 2)
 
 
 class RadarProb():
