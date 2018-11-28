@@ -2,6 +2,7 @@ import copy
 import cv2
 import threading
 import sys
+
 import rospy
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
@@ -214,18 +215,11 @@ class Video():
         self.img_pub.publish(self.bridge.cv2_to_imgmsg(img, 'bgr8'))
 
     def ros_publish(self, out):
-        Cout = out[0][0]
-        LP_out = out[1][0]
-        self.mat1.data = [-1] * 7
-        self.mat2.data = [-1] * 8
+        #self.mat1.data = [-1] * 7
+        #self.mat2.data = [-1] * 8
+        self.mat1.data = out[0][0]
+        self.mat2.data = out[1][0]
 
-        if Cout[0] > self.yolo.car_threshold:
-            for i in range(6):
-                self.mat1.data[i] = Cout[i]
-
-        if LP_out[0] > self.yolo.LP_threshold:
-            for i in range(7):
-                self.mat2.data[i] = LP_out[i]
         self.car_pub.publish(self.mat1)
         self.LP_pub.publish(self.mat2)
 

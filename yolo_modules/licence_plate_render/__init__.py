@@ -58,6 +58,11 @@ class LPGenerator():
             inter_method=10, pca_noise=1.0,
             brightness=0.5, contrast=0.5, saturation=0.3, hue=1.0)
 
+        self.augs2 = mxnet.image.CreateAugmenter(
+            data_shape=(3, self.h, self.w),
+            inter_method=10, pca_noise=0.1,
+            brightness=0.5, contrast=0.5, saturation=0.5, hue=1.0)
+
     def draw_LP(self):
         LP_type = 0  # np.random.randint(2)
         LP_w, LP_h = self.LP_WH[LP_type]
@@ -72,7 +77,9 @@ class LPGenerator():
 
             LP.paste(self.dot, (x[3], 45))
 
-            num = np.random.randint(0, 10, size=4)
+            num = np.random.randint(0, 9, size=4)
+            num = [9 if i == 4 else i for i in num]  # exclude four
+
             for i, j in enumerate(num):
                 LP.paste(self.font0[j], (x[i+4], 35))
                 label.append([j, float(x[i+4])/LP_w, float(x[i+4]+45)/LP_w])
@@ -203,49 +210,53 @@ class LPGenerator():
 
         return img_batch, label_batch
 
-    def render(self, bs, ctx):
-        LP_label = nd.ones((bs, 7, 5), ctx=ctx) * -1
-        LP_batch = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
-        mask = nd.zeros((bs, 3, self.h, self.w), ctx=ctx)
+    def render(self, bg_batch):
+        ctx = bg_batch.context
+        bs = bg_batch.shape[0]
+        h = bg_batch.shape[2]
+        w = bg_batch.shape[3]
+
+        mask_batch = nd.zeros_like(bg_batch)
+        image_batch = nd.zeros_like(bg_batch)
+        label_batch = nd.ones((bs, 7, 3), ctx=ctx) * (-1)
 
         for i in range(bs):
             LP, LP_type, labels = self.draw_LP()
-            LP_w, LP_h = LP.size
+            # LP_w, LP_h = LP.size
+            resize = np.random.uniform(low=0.9, high=1.0)
+            LP_w = LP.size[0] * resize
+            LP_h = LP.size[1] * resize * np.random.uniform(low=0.9, high=1.1)
 
-            resize = np.random.rand() * 0.1 + 0.9
-            LP_w = int(resize * self.w)
-            LP_h = int((np.random.rand()*0.1+0.9) * resize * self.h)
+            LP_w = int(LP_w)
+            LP_h = int(LP_h)
             LP = LP.resize((LP_w, LP_h), PIL.Image.BILINEAR)
 
             LP, r = self.pil_image_enhance(LP, M=.0, N=.0, R=5.0, G=8.0)
-            #LP = LP.filter(ImageFilter.GaussianBlur(radius=np.random.rand()*8.))
 
-            paste_x = np.random.randint(int(-0.0*LP_w), int(self.w-LP_w))
-            paste_y = np.random.randint(int(-0.0*LP_h), int(self.h-LP_h))
+            paste_x = np.random.randint(int(-0.05*LP_w), int(self.w-0.95*LP_w))
+            paste_y = np.random.randint(int(-0.05*LP_h), int(self.h-0.95*LP_h))
 
             tmp = PIL.Image.new('RGBA', (self.w, self.h))
             tmp.paste(LP, (paste_x, paste_y))
-            bg = PIL.Image.new('RGBA', (self.w, self.h), tuple(np.random.randint(255, size=3)))
-            LP = PIL.Image.composite(tmp, bg, tmp)
 
-            LP = nd.array(PIL.Image.merge("RGB", (LP.split()[:3])))
-            for aug in self.augs2:
-                LP = aug(LP)
+            mask = yolo_gluon.pil_mask_2_rgb_ndarray(tmp.split()[-1])
+            image = yolo_gluon.pil_rgb_2_rgb_ndarray(tmp, augs=self.augs)
 
-            LP_batch[i] = LP.as_in_context(ctx).transpose((2, 0, 1))/255.
+            mask_batch[i] = mask.as_in_context(ctx)
+            image_batch[i] = image.as_in_context(ctx)
 
             r = r * np.pi / 180
             offset = paste_x + abs(LP_h*math.sin(r)/2)
+            # print(labels)
             for j, c in enumerate(labels):
+                label_batch[i, j, 0] = c[0]
+                label_batch[i, j, 1] = (offset + c[1]*LP_w*math.cos(r))/self.w
+                label_batch[i, j, 2] = (offset + c[2]*LP_w*math.cos(r))/self.w
 
-                LP_label[i, j, 0] = c[0]
-                LP_label[i, j, 1] = (offset + c[1]*LP_w*math.cos(r))/self.w
-                LP_label[i, j, 3] = (offset + c[2]*LP_w*math.cos(r))/self.w
-                #LP_label[i,j,1] = (c[1]*LP_w*math.cos(r) - 40*math.sin(r) + paste_x)/self.w
-                #LP_label[i,j,3] = (c[2]*LP_w*math.cos(r) + 40*math.sin(r) + paste_x)/self.w
-        LP_batch = nd.clip(LP_batch, 0, 1)
+        img_batch = bg_batch*(1 - mask_batch)/255. + image_batch * mask_batch
+        img_batch = nd.clip(img_batch, 0, 1)
 
-        return LP_batch, LP_label
+        return img_batch, label_batch
 
     def test_render(self, n):
         plt.ion()
@@ -389,7 +400,7 @@ class ProjectRectangle6D():
         clipped_LP = cv2.warpPerspective(img, M, (LP_size[1], LP_size[0]))
 
         p = np.expand_dims(corner_pts, axis=0).astype(np.int32)
-        img = cv2.polylines(img, p, 1, (0, 0, 1), 2)
+        img = cv2.polylines(img, p, 1, (0, 0, 255), 2)
 
         return img, clipped_LP
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import datetime
-import glob
+
 import sys
 import threading
 import time
@@ -83,25 +83,20 @@ class YOLO(object):
             weight = args.weight
 
         else:
-            backup_list = glob.glob(self.backup_dir + '/*')
-
-            if len(backup_list) != 0:
-                weight = max(backup_list, key=os.path.getctime)
-                print('Find latest weight: %s' % weight)
-
-            else:
-                weight = 'No pretrain weight'
+            weight = yolo_gluon.get_latest_weight_from(self.backup_dir)
 
         yolo_gluon.init_NN(self.net, weight, self.ctx)
-        
+
         if args.mode == 'train':
             self.version = args.version
             self.record = args.record
             self._init_train()
 
-        if args.mode == 'valid' or args.mode == 'export':
+        else:
             self.export_file = args.version + '/export/YOLO_export'
-            self.car_threshold = 0.9
+
+        if args.mode == 'valid':
+            self.car_threshold = 0.6
             self.LP_threshold = 0.9
             self._init_executor(use_tensor_rt=args.tensorrt)
 
@@ -511,7 +506,7 @@ class YOLO(object):
                 bg = bg.data[0].as_in_context(self.ctx[0])
                 imgs, labels = self.car_renderer.render(
                     bg, 'valid', pascal_rate=pascal_rate)
-                outs, _ = self.predict(imgs, mode=0)
+                outs, _ = self.predict(imgs, bind=0)
 
                 pred = nd.zeros((self.iou_bs, 4))
                 pred[:, 0] = outs[:, 2] - outs[:, 4] / 2
@@ -551,9 +546,10 @@ class YOLO(object):
         self.backward_counter += 1
         if self.backward_counter % self.record_step == 0:
             idx = self.backward_counter//self.record_step
-            save_model = os.path.join(
+            save_path = os.path.join(
                 self.backup_dir, self.exp + 'iter' + '_%d' % idx)
-            self.net.collect_params().save(save_model)
+
+            self.net.collect_params().save(save_path)
 
     # -------------------- Validation Part -------------------- #
     def _init_executor(self, use_tensor_rt=False):
@@ -754,14 +750,16 @@ class YOLO(object):
             imgs, labels = car_renderer.render(bg, 'valid', pascal_rate=0.5, render_rate=0.9)
             imgs, LP_labels = LP_generator.add(imgs, self.LP_r_max, add_rate=0.8)
 
-            outs = self.predict(imgs, LP=True, bind=1)
+            outs = self.predict(imgs, LP=True, bind=0)
             # outs[car or LP][batch]
             img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
             img, clipped_LP = LP_generator.project_rect_6d.add_edges(
                 img, outs[1][0, 1:])
             #LP_pose = outs[1][0, 1:]
-            img = yolo_cv.cv2_add_bbox(img, labels[0, 0].asnumpy(), 4, use_r=0)  # Green
-            img = yolo_cv.cv2_add_bbox(img, outs[0][0], 5, use_r=0)  # Red box
+            img = yolo_cv.cv2_add_bbox(img, labels[0, 0].asnumpy(), 4, use_r=0)
+            # Green
+            img = yolo_cv.cv2_add_bbox(img, outs[0][0], 5, use_r=0)
+            # Red box
             radar_prob.plot3d(outs[0][0, 0], outs[0][0, -self.num_class:])
 
             yolo_cv.matplotlib_show_img(ax1, img)
@@ -772,7 +770,10 @@ class YOLO(object):
         batch_shape = (1, 3, self.size[0], self.size[1])
         data = nd.zeros(batch_shape).as_in_context(self.ctx[0])
         self.net.forward(data)
+        print(global_variable.yellow)
         print('export model to: %s' % self.export_file)
+        if not os.path.exists(self.export_file):
+            os.makedirs(self.export_file)
         self.net.export(self.export_file)
 
 

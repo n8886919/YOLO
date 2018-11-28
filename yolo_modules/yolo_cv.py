@@ -25,17 +25,17 @@ class PILImageEnhance():
         self.noise_var = noise_var
 
     def __call__(self, img, **kwargs):
-        r = 0
         if self.M > 0 or self.N > 0 or \
             ('M' in kwargs and kwargs['M'] != 0) or \
                 ('N' in kwargs and kwargs['N'] != 0):
             img = self.random_shearing(img, **kwargs)
+        r = 0
         if self.R != 0 or ('R' in kwargs and kwargs['R'] != 0):
             img, r = self.random_rotate(img, **kwargs)
         if self.G != 0 or ('G' in kwargs and kwargs['G'] != 0):
             img = self.random_blur(img, **kwargs)
         if self.noise_var != 0 or \
-            ('self.noise_var' in kwargs and kwargs['self.noise_var'] != 0):
+           'self.noise_var' in kwargs and kwargs['self.noise_var'] != 0:
             img = self.random_noise(img, **kwargs)
         return img, r
 

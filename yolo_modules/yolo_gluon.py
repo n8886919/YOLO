@@ -1,9 +1,41 @@
 import os
+import glob
 import PIL
+
 import mxnet
 from mxnet import nd
 
 from yolo_modules import global_variable
+
+
+def get_latest_weight_from(path):
+    backup_list = glob.glob(path + '/*')
+    if len(backup_list) != 0:
+        weight = max(backup_list, key=os.path.getctime)
+        print('Find latest weight: %s' % weight)
+
+    else:
+        weight = 'No pretrain weight'
+
+    return weight
+
+
+def init_NN(target, weight, ctx):
+    print(global_variable.yellow)
+    print('use pretrain weight: %s' % weight)
+    try:
+        target.collect_params().load(weight, ctx=ctx)
+        print(global_variable.green)
+        print('Load Pretrain Successfully')
+
+    except Exception as e:
+        print(global_variable.red)
+        print('Load Pretrain Failed, Use Xavier initializer')
+        print(e.message.split('\n')[0])
+        target.initialize(init=mxnet.init.Xavier(), ctx=ctx)
+
+    finally:
+        target.hybridize()
 
 
 def pil_mask_2_rgb_ndarray(m):
@@ -32,7 +64,7 @@ def batch_ndimg_2_cv2img(x):
     return x.transpose((0, 2, 3, 1)).asnumpy()
 
 
-def load_background(train_or_val, bs, w, h, **kargs):
+def load_background(train_or_val, bs, h, w, **kargs):
     path = global_variable.training_data_path
     path = path + '/HP_31/sun2012_' + train_or_val
     if train_or_val == 'train':
@@ -41,7 +73,7 @@ def load_background(train_or_val, bs, w, h, **kargs):
         shuffle = False
 
     BG_iter = mxnet.image.ImageIter(
-        bs, (3, w, h),
+        bs, (3, h, w),
         path_imgrec=path + '.rec',
         path_imgidx=path + '.idx',
         shuffle=shuffle,
@@ -68,24 +100,6 @@ def split_render_data(batch, ctx):
         splitted_batch.append(batch_at_gpu_i)
 
     return splitted_batch
-
-
-def init_NN(target, weight, ctx):
-    #print(global_variable.blue)
-    print('use pretrain weight: %s' % weight)
-    try:
-        target.collect_params().load(weight, ctx=ctx)
-        print(global_variable.green)
-        print('Load Pretrain Successfully')
-
-    except Exception as e:
-        print(global_variable.red)
-        print('Load Pretrain Failed, Use Xavier initializer')
-        print(e.message.split('\n')[0])
-        target.initialize(init=mxnet.init.Xavier(), ctx=ctx)
-
-    finally:
-        target.hybridize()
 
 
 def ImageIter_next_batch(BG_iter):
