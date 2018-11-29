@@ -71,28 +71,18 @@ class YOLO(object):
         self._init_syxhw()
         print(global_variable.yellow)
         print('Device = {}'.format(self.ctx))
-        # -------------------- initialize NN-------------------- #
-        if args.version == 'v2':
+
+        if args.version == 'v2':  # 24 classes, no ele
             self.spec = spec
             return 0
-
-        self.net = CarLPNet(spec, num_sync_bn_devices=len(self.ctx))
-        self.backup_dir = os.path.join(args.version, 'backup')
-
-        if args.weight is not None:
-            weight = args.weight
-
-        else:
-            weight = yolo_gluon.get_latest_weight_from(self.backup_dir)
-
-        yolo_gluon.init_NN(self.net, weight, self.ctx)
 
         if args.mode == 'train':
             self.version = args.version
             self.record = args.record
+            self._init_net(spec, args.weight)
             self._init_train()
 
-        else:
+        else:  # valid or export
             self.export_file = args.version + '/export/YOLO_export'
 
         if args.mode == 'valid':
@@ -101,6 +91,15 @@ class YOLO(object):
             self._init_executor(use_tensor_rt=args.tensorrt)
 
     # -------------------- Training Part -------------------- #
+    def _init_net(self, spec, weight):
+        self.net = CarLPNet(spec, num_sync_bn_devices=len(self.ctx))
+        self.backup_dir = os.path.join(self.version, 'backup')
+
+        if weight is None:
+            weight = yolo_gluon.get_latest_weight_from(self.backup_dir)
+
+        yolo_gluon.init_NN(self.net, weight, self.ctx)
+
     def _init_train(self):
         self.exp = datetime.datetime.now().strftime("%m-%dx%H-%M")
         self.exp = self.exp + '_' + self.dataset
@@ -112,11 +111,12 @@ class YOLO(object):
         print('Record Step = {}'.format(self.record_step))
         print('Step = {}'.format(self.steps))
         print('Area = {}'.format(self.area))
+        '''
         for k in self.loss_name:
             print('%s%s: 10^%s%d' % (
                 global_variable.blue, k, global_variable.yellow,
                 math.log10(self.scale[k])))
-
+        '''
         self.backward_counter = self.train_counter_start
 
         self.nd_all_anchors = [

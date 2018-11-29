@@ -1,4 +1,5 @@
 import argparse
+import cv2
 import numpy as np
 import os
 import time
@@ -7,7 +8,9 @@ import matplotlib.pyplot as plt
 import rospy
 from std_msgs.msg import String
 from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 
+import mxnet
 from mxnet import gluon
 from mxnet.gluon import nn
 from mxnet import gpu, cpu
@@ -129,6 +132,48 @@ def record_to_tensorboard(loss):
         net.collect_params().save(save_path)
 
 
+def _image_callback(img):
+    img = bridge.imgmsg_to_cv2(img, "bgr8")
+    img = cv2.resize(img, tuple(size[::-1]))
+    nd_img = nd.array(img).as_in_context(ctx[0])
+    nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0) / 255.
+
+    score, text = predict(nd_img)
+    cv2_show_OCR_result(img, score, text)
+    pub.publish(text)
+
+
+def cv2_show_OCR_result(img, score, text):
+    x = np.arange(8, 384, 16).reshape(-1, 1)
+    y = ((1-score) * 160).reshape(-1, 1)
+    points = np.concatenate((x, y), axis=-1)
+    points = np.expand_dims(points, axis=0).astype(np.int32)
+
+    cv2.polylines(img, points, 0, (255, 0, 0), 2)
+    cv2.putText(img, text, (0, 60), 2, 2, (0, 0, 255), 2)
+    # image/text/left-top/font type/size/color/width
+    cv2.imshow('img', img)
+    cv2.waitKey(1)
+
+
+def predict(nd_img):
+    score_x, class_x = executor.forward(is_train=False, data=nd_img)
+
+    s = score_x[0]
+    s = nd.sigmoid(s.reshape(-1)).asnumpy()
+    p = class_x[0].asnumpy()
+    p = np.argmax(p, axis=-1)[0]
+    s2 = np.concatenate(([0], s, [0]))
+    # zero-dimensional arrays cannot be concatenated
+    # Find peaks
+    text = ''
+    for i in range(24):
+        if s2[i+1] > 0.6 and s2[i+1] > s2[i+2] and s2[i+1] > s2[i]:
+            c = int(p[i])
+            text = text + cls_names[c]
+    return s, text
+
+
 os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
 os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '1'
 
@@ -164,20 +209,16 @@ class_weight = 1.0
 num_init_features = 32
 growth_rate = 12
 block_config = [6, 12, 24]
-net = OCRDenseNet(num_init_features, growth_rate, block_config, classes=34)
 
-backup_dir = os.path.join(args.version, 'backup')
-weight = yolo_gluon.get_latest_weight_from(backup_dir)
-yolo_gluon.init_NN(net, weight, ctx)
-
-batch_size = 100 * len(ctx)
 export_file = args.version + '/export/YOLO_export'
-backup_dir = os.path.join(args.version, 'backup')
-if not os.path.exists(backup_dir):
-    os.makedirs(backup_dir)
-
+if args.mode != 'video':
+    net = OCRDenseNet(num_init_features, growth_rate, block_config, classes=34)
+    backup_dir = os.path.join(args.version, 'backup')
+    weight = yolo_gluon.get_latest_weight_from(backup_dir)
+    yolo_gluon.init_NN(net, weight, ctx)
 
 if args.mode == 'train':
+    batch_size = 100 * len(ctx)
     backward_counter = 0
 
     CE_loss = gluon.loss.SoftmaxCrossEntropyLoss(from_logits=False)
@@ -194,6 +235,8 @@ if args.mode == 'train':
     # prob, score  = net(nd.zeros((1,3,160,384), ctx=ctx[0]))
     # summary_writer.add_graph(get_feature)
     # print(prob.shape, score.shape)
+    if not os.path.exists(backup_dir):
+        os.makedirs(backup_dir)
 
     print(global_variable.cyan)
     print('OCR Render And Train')
@@ -236,7 +279,8 @@ elif args.mode == 'valid':
         score_x, class_x = net(imgs)
 
         imgs = yolo_gluon.batch_ndimg_2_cv2img(imgs)
-        for i, ax in enumerate(axs):
+        for i, ax in range(bs):
+            ax = axs[i]
             s = score_x[i]
             s = nd.sigmoid(s.reshape(-1)).asnumpy()
             p = class_x[i, 0].asnumpy()
@@ -258,27 +302,53 @@ elif args.mode == 'valid':
         raw_input('press Enter to next batch....')
 
 elif args.mode == 'video':
+    sym, arg_params, aux_params = mxnet.model.load_checkpoint(export_file, 0)
+    executor = sym.simple_bind(
+        ctx=ctx[0],
+        data=(1, 3, size[0], size[1]),
+        grad_req='null',
+        force_rebind=True)
+    executor.copy_params_from(arg_params, aux_params)
+
+    bridge = CvBridge()
     rospy.init_node("OCR_node", anonymous=True)
+    pub = rospy.Publisher('YOLO/OCR', String, queue_size=0)
     rospy.Subscriber('/YOLO/clipped_LP', Image, _image_callback)
-    pub = rospy.Publisher('YOLO/OCR', String, queue_size=1)
-    string = String
+
+    print('Image Topic: /YOLO/clipped_LP')
+    print('checkpoint file: %s' % export_file)
+
+    '''# test inference rate
+    data = nd.zeros((1, 3, size[0], size[1])).as_in_context(ctx[0])
+    for _ in range(10):
+        x1, x2 = executor.forward(is_train=False, data=data)
+        x1.wait_to_read()
+    t = time.time()
+    for _ in range(100):
+        x1, x2 = executor.forward(is_train=False, data=data)
+        x1.wait_to_read()
+    rate = 100/float(time.time() - t)
+    print(global_variable.yellow)
+    print('Inference Rate = %.2f' % rate)
+    '''
+    r = rospy.Rate(30)
     while not rospy.is_shutdown():
-        string.data = ''
-        pub.publish(string)
+        r.sleep()
 
 elif args.mode == 'export':
     batch_shape = (1, 3, size[0], size[1])
     data = nd.zeros(batch_shape).as_in_context(ctx[0])
-
+    '''
     t = time.time()
     for _ in range(1000):
         x1, x2 = net.forward(data)
         x1.wait_to_read()
     print(time.time() - t)
-
-    print(x1.shape)
+    '''
     print(global_variable.yellow)
     print('export model to: %s' % export_file)
     if not os.path.exists(export_file):
         os.makedirs(export_file)
+
+    net.forward(data)
     net.export(export_file)

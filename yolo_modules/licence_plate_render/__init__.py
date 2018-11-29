@@ -291,7 +291,6 @@ class LPGenerator():
         return score.asnumpy()
 
     def test_add(self, b):
-        #while True:
         batch_iter = load(b, h, w)
         for batch in batch_iter:
             imgs = batch.data[0].as_in_context(ctx[0])  # b*RGB*w*h

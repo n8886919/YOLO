@@ -49,7 +49,8 @@ def main():
 class Video():
     def __init__(self, args):
         self.yolo = YOLO(args)
-        self.project_rect_6d = licence_plate_render.ProjectRectangle6D(380, 160)
+        self.project_rect_6d = licence_plate_render.ProjectRectangle6D(
+            int(380*1.05), int(160*1.05))
         self._init_ros()
 
         self.dev = args.dev
