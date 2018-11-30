@@ -1,11 +1,80 @@
-import os
 import glob
+import numpy
+import os
 import PIL
 
 import mxnet
 from mxnet import nd
 
 from yolo_modules import global_variable
+
+
+def init_executor(export_file, size, ctx, use_tensor_rt=False, step=0):
+    print('checkpoint file: %s' % export_file)
+    sym, arg_params, aux_params = mxnet.model.load_checkpoint(
+        export_file, step)
+    shape = (1, 3, size[0], size[1])
+
+    if use_tensor_rt:
+        print('Building TensorRT engine')
+        os.environ['MXNET_USE_TENSORRT'] = '1'
+
+        arg_params.update(aux_params)
+        all_params = dict(
+            [(k, v.as_in_context(ctx)) for k, v in arg_params.items()])
+
+        executor = mxnet.contrib.tensorrt.tensorrt_bind(
+            sym,
+            all_params=all_params,
+            ctx=ctx,
+            data=shape,
+            grad_req='null',
+            force_rebind=True)
+
+    else:
+        executor = sym.simple_bind(
+            ctx=ctx,
+            data=shape,
+            grad_req='null',
+            force_rebind=True)
+        executor.copy_params_from(arg_params, aux_params)
+
+    return executor
+
+
+def get_ctx(gpu):
+
+    return [mxnet.gpu(int(i)) for i in gpu]
+
+
+def record_loss(losses, loss_names, summary_writer, step=0, exp=''):
+    for i, L in enumerate(losses):
+        loss_name = loss_names[i]
+        summary_writer.add_scalar(
+            exp + 'Scaled_Loss',
+            (loss_name, nd.mean(L).asnumpy()),
+            step)
+
+
+def export(net, batch_shape, export_file, onnx=False, epoch=0):
+    data = nd.zeros(batch_shape).as_in_context(mxnet.gpu(0))
+    net.forward(data)
+
+    print(global_variable.yellow)
+    print('export model to: %s' % export_file)
+    if not os.path.exists(export_file):
+        os.makedirs(export_file)
+    net.export(export_file, epoch=epoch)
+    if onnx:
+        onnx_file = os.path.join(export_file, 'onnx')
+        print('export onnx to: %s' % onnx_file)
+        sym = export_file + '-symbol.json'
+        params = export_file + '-%04d.params' % epoch
+        mxnet.contrib.onnx.export_model(
+            sym, params, [batch_shape], numpy.float32, onnx_file)
+
+    print(global_variable.green)
+    print('Export Done')
 
 
 def get_latest_weight_from(path):
@@ -21,11 +90,11 @@ def get_latest_weight_from(path):
 
 
 def init_NN(target, weight, ctx):
-    print(global_variable.yellow)
+    print(global_variable.magenta)
     print('use pretrain weight: %s' % weight)
     try:
         target.collect_params().load(weight, ctx=ctx)
-        print(global_variable.green)
+        # print(global_variable.green)
         print('Load Pretrain Successfully')
 
     except Exception as e:
@@ -105,7 +174,8 @@ def split_render_data(batch, ctx):
 def ImageIter_next_batch(BG_iter):
     try:
         return BG_iter.next().data[0]
-    except:
+    except Exception as e:
+        print(e)
         BG_iter.reset()
         return BG_iter.next().data[0]
 
@@ -115,8 +185,8 @@ def assign_batch(batch, ctx):
         batch_xs = mxnet.gluon.utils.split_and_load(batch.data[0], ctx)
         batch_ys = mxnet.gluon.utils.split_and_load(batch.label[0], ctx)
     else:
-        batch_xs = [batch.data[0].as_in_context(ctx[0])] # b*RGB*w*h
-        batch_ys = [batch.label[0].as_in_context(ctx[0])] # b*L*5   
+        batch_xs = [batch.data[0].as_in_context(ctx[0])]  # b*RGB*w*h
+        batch_ys = [batch.label[0].as_in_context(ctx[0])]  # b*L*5
     return batch_xs, batch_ys
 
 
@@ -201,30 +271,10 @@ def get_iou(predict, target, mode=1):
 
 def nd_label_batch_ltrb2yxhw(label_batch):
     new_label_batch = nd.zeros_like(label_batch)
-
-    new_label_batch[:, :, 0] = (label_batch[:, :, 1] + label_batch[:, :, 3])/2  # y
-    new_label_batch[:, :, 1] = (label_batch[:, :, 0] + label_batch[:, :, 2])/2  # x
-    new_label_batch[:, :, 2] = label_batch[:, :, 3] - label_batch[:, :, 1]  # h
-    new_label_batch[:, :, 3] = label_batch[:, :, 2] - label_batch[:, :, 0]  # w
+    # x, y, h, w
+    new_label_batch[:, :, 0] = (label_batch[:, :, 1] + label_batch[:, :, 3])/2
+    new_label_batch[:, :, 1] = (label_batch[:, :, 0] + label_batch[:, :, 2])/2
+    new_label_batch[:, :, 2] = label_batch[:, :, 3] - label_batch[:, :, 1]
+    new_label_batch[:, :, 3] = label_batch[:, :, 2] - label_batch[:, :, 0]
 
     return new_label_batch
-
-
-'''
-def load_ImageDetIter(path, batch_size, h, w):
-    print('Loading ImageDetIter ' + path)
-    batch_iter = mxnet.image.ImageDetIter(batch_size, (3, h, w),
-        path_imgrec=path+'.rec',
-        path_imgidx=path+'.idx',
-        shuffle=True,
-        pca_noise=0.1,
-        brightness=0.5,
-        saturation=0.5,
-        contrast=0.5,
-        hue=1.0
-        #rand_crop=0.2,
-        #rand_pad=0.2,
-        #area_range=(0.8, 1.2),
-        )
-    return batch_iter
-'''

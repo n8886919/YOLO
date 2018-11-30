@@ -15,7 +15,6 @@ from yolo_modules import yolo_gluon
 from yolo_modules import yolo_cv
 from yolo_modules import licence_plate_render
 from yolo_modules import global_variable
-
 from utils import *
 from render_car import *
 
@@ -34,7 +33,10 @@ def main():
         yolo.valid()
 
     elif args.mode == 'export':
-        yolo.export()
+        yolo_gluon.export(yolo.net,
+                          (1, 3, yolo.size[0], yolo.size[1]),
+                          yolo.export_file,
+                          onnx=False, ep=0)
 
     elif args.mode == 'kmean':
         yolo.get_default_anchors()
@@ -76,23 +78,24 @@ class YOLO(object):
             self.spec = spec
             return 0
 
-        if args.mode == 'train':
+        self.export_file = args.version + '/export/YOLO_export'
+        if args.mode == 'train' or args.mode == 'export':
             self.version = args.version
             self.record = args.record
             self._init_net(spec, args.weight)
             self._init_train()
 
-        else:  # valid or export
-            self.export_file = args.version + '/export/YOLO_export'
-
-        if args.mode == 'valid':
+        elif args.mode == 'valid':
             self.car_threshold = 0.6
             self.LP_threshold = 0.9
             self._init_executor(use_tensor_rt=args.tensorrt)
 
     # -------------------- Training Part -------------------- #
     def _init_net(self, spec, weight):
-        self.net = CarLPNet(spec, num_sync_bn_devices=len(self.ctx))
+        self.net = CarLPNet(spec, num_sync_bn_devices=-1)
+        # Do not set num_sync_bn_devices=len(self.ctx)
+        # because No conversion function for contrib_SyncBatchNorm yet.
+        # (ONNX)
         self.backup_dir = os.path.join(self.version, 'backup')
 
         if weight is None:
@@ -765,16 +768,6 @@ class YOLO(object):
             yolo_cv.matplotlib_show_img(ax1, img)
             yolo_cv.matplotlib_show_img(ax2, clipped_LP)
             raw_input('next')
-
-    def export(self):
-        batch_shape = (1, 3, self.size[0], self.size[1])
-        data = nd.zeros(batch_shape).as_in_context(self.ctx[0])
-        self.net.forward(data)
-        print(global_variable.yellow)
-        print('export model to: %s' % self.export_file)
-        if not os.path.exists(self.export_file):
-            os.makedirs(self.export_file)
-        self.net.export(self.export_file)
 
 
 '''

@@ -1,0 +1,25 @@
+{
+  size: [320,512],
+  positive_weight: 1.0,
+  negative_weight: 0.1,
+  r_max: [45, 60, 30],
+  num_class: 3,
+  num_init_features: 64,
+  growth_rate: 12,
+  block_config: [6, 12, 24, 24],
+  batch_size: 32,
+  record_step: 10000,
+  learning_rate: 0.001,
+  loss_name: 
+    ['score', 'xy', 'z', 'r', 'class'],
+  scale: 
+    {
+      'score': 0.1,
+      'xy': 10.0,
+      'z': 10.0, 
+      'r': 0.1,
+      'class': 0.0},
+  exp: 'LP_', 
+  pub_clipped_LP: /YOLO/clipped_LP,
+  pub_LP: '/YOLO/LP'
+}

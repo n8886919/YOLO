@@ -4,8 +4,8 @@ import threading
 import sys
 
 import rospy
-from sensor_msgs.msg import Image
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
+from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 
 import mxnet
@@ -194,7 +194,8 @@ class Video():
         img = copy.deepcopy(self.img)
         #self.out.write(img)
         if self.radar:
-            self.radar_prob.plot3d(Cout[0], Cout[-self.num_class:])
+            self.radar_prob.plot3d(
+                Cout[0], Cout[-self.yolo.num_class:])
 
         # -------------------- Licence Plate -------------------- #
         if LP_out[0] > self.yolo.LP_threshold and self.LP:

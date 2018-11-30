@@ -11,12 +11,12 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
 import mxnet
-from mxnet import gluon
-from mxnet.gluon import nn
-from mxnet import gpu, cpu
-from mxnet import nd
 from mxnet import autograd
+from mxnet import gluon
+from mxnet import gpu
 from mxnet import init
+from mxnet import nd
+from mxnet.gluon import nn
 from mxboard import SummaryWriter
 from gluoncv.model_zoo.densenet import _make_dense_block, _make_transition
 

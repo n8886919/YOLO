@@ -48,11 +48,7 @@ class LPGenerator():
 
         self.pil_image_enhance = yolo_cv.PILImageEnhance(
             M=0., N=0., R=0., G=1.0, noise_var=10.)
-        '''
-        self.augs = mxnet.image.CreateAugmenter(
-            data_shape=(3, self.h, self.w), inter_method=10,
-            brightness=0.5, contrast=0.5, saturation=0.5, pca_noise=1.0)
-        '''
+
         self.augs = mxnet.image.CreateAugmenter(
             data_shape=(3, self.h, self.w),
             inter_method=10, pca_noise=1.0,
@@ -61,7 +57,7 @@ class LPGenerator():
         self.augs2 = mxnet.image.CreateAugmenter(
             data_shape=(3, self.h, self.w),
             inter_method=10, pca_noise=0.1,
-            brightness=0.5, contrast=0.5, saturation=0.5, hue=1.0)
+            brightness=0.7, contrast=0.7, saturation=0.7, hue=1.0)
 
     def draw_LP(self):
         LP_type = 0  # np.random.randint(2)
@@ -100,45 +96,6 @@ class LPGenerator():
         '''
         return LP, LP_type, label
 
-    def resize_and_paste_LP(self, LP, OCR_labels=None):
-        # print(LP.size[0], LP.size[1]) # (320, 150)
-        resize_w = int((np.random.rand()*0.15+0.15)*LP.size[0])
-        resize_h = int((np.random.rand()*0.1+0.2)*LP.size[1])
-        LP = LP.resize((resize_w, resize_h), PIL.Image.BILINEAR)
-
-        LP, r = self.pil_image_enhance(LP)
-
-        paste_x = int(np.random.rand() * (self.w-120))
-        paste_y = int(np.random.rand() * (self.h-120))
-
-        tmp = PIL.Image.new('RGBA', (self.w, self.h))
-        tmp.paste(LP, (paste_x, paste_y))
-
-        m = nd.array(tmp.split()[-1]).reshape(1, self.h, self.w)
-        mask = nd.tile(m, (3, 1, 1))
-
-        LP = PIL.Image.merge("RGB", (tmp.split()[:3]))
-        LP = nd.array(LP)
-        LP_ltrb = tmp.getbbox()
-        LP_label = nd.array(LP_ltrb)
-
-        if OCR_labels is not None:
-            print('TODO')
-            # TODO
-        else:
-            for aug in self.augs:
-                LP = aug(LP)
-            LP_label = nd.array([[
-                self.class_index,
-                float(LP_ltrb[0])/self.w,
-                float(LP_ltrb[1])/self.h,
-                float(LP_ltrb[2])/self.w,
-                float(LP_ltrb[3])/self.h,
-                0  # i dot car Licence plate rotating
-            ]])
-
-        return LP.transpose((2, 0, 1)), mask, LP_label
-
     def random_projection_LP_6D(self, LP, in_size, out_size, r_max):
         Z = np.random.uniform(low=1000., high=3000.)
         X = (Z * 8 / 30.) * np.random.uniform(low=-1, high=1)
@@ -161,10 +118,10 @@ class LPGenerator():
             PIL.Image.BILINEAR)
 
         LP = LP.resize((out_size[1], out_size[0]), PIL.Image.BILINEAR)
-        LP, _ = self.pil_image_enhance(LP)
+        LP, _ = self.pil_image_enhance(LP, G=1.0, noise_var=10.0)
 
         mask = yolo_gluon.pil_mask_2_rgb_ndarray(LP.split()[-1])
-        image = yolo_gluon.pil_rgb_2_rgb_ndarray(LP, augs=self.augs)
+        image = yolo_gluon.pil_rgb_2_rgb_ndarray(LP, augs=self.augs2)
 
         x = X * self.project_rect_6d.fx / Z + self.project_rect_6d.cx
         x = x * out_size[1] / float(self.project_rect_6d.camera_w)
@@ -399,7 +356,7 @@ class ProjectRectangle6D():
         clipped_LP = cv2.warpPerspective(img, M, (LP_size[1], LP_size[0]))
 
         p = np.expand_dims(corner_pts, axis=0).astype(np.int32)
-        img = cv2.polylines(img, p, 1, (0, 0, 255), 2)
+        img = cv2.polylines(img, p, 1, (0, 0, 1), 2)
 
         return img, clipped_LP
 

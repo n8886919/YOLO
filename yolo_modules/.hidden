@@ -1,5 +1,7 @@
 basic_yolo.pyc
 cv.pyc
 gluon.pyc
+global_variable.pyc
+__pycache__
 __init__.pyc
 pil_image_enhancement.pyc

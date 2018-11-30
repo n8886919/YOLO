@@ -1,11 +1,12 @@
-*.pyc
-*/devel
-*/build
-*.catkin_workspace
 # "*" matches anything except "/"
-**/logs/**
-**/backup/**
-**/video/**
+**.pyc
+**/devel
+**/build
+**.catkin_workspace
+**/__pycache__
+**/logs
+**/backup
 **/test_image
+**/export
 **.params
 **.json

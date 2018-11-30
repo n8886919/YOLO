@@ -35,8 +35,7 @@ def yolo_Parser():
 
 
 def video_Parser():
-    parser = argparse.ArgumentParser(prog="python YOLO.py")
-
+    parser = argparse.ArgumentParser(prog="python video_node.py")
     parser.add_argument("version", help="v1")
 
     # -------------------- select options -------------------- #
@@ -106,7 +105,7 @@ def video_Parser():
 
 
 class CarLPNet(basic_yolo.BasicYOLONet):
-    def __init__(self, spec, num_sync_bn_devices=1, **kwargs):
+    def __init__(self, spec, num_sync_bn_devices=-1, **kwargs):
         super(CarLPNet, self).__init__(spec, num_sync_bn_devices, **kwargs)
 
         LP_channel = spec['channels'][-3]
