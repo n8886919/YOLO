@@ -1,5 +1,8 @@
+import os
+
 training_data_path = '/media/nolan/SSD1'
-camera_parameter_path = '/home/nolan/Desktop/YOLO/camera_parameter/C310_4.yaml'
+camera_parameter_path = os.path.dirname(os.path.abspath(__file__)) + \
+    '/../camera_parameter/C310_4.yaml'
 
 black = '\033[1;30m'
 red = '\033[1;31m'

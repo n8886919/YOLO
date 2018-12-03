@@ -5,10 +5,10 @@
   r_max: [45, 60, 30],
   num_class: 3,
   num_init_features: 64,
-  growth_rate: 12,
+  growth_rate: 24,
   block_config: [6, 12, 24, 24],
-  batch_size: 32,
-  record_step: 10000,
+  batch_size: 24,
+  record_step: 1000,
   learning_rate: 0.001,
   loss_name: 
     ['score', 'xy', 'z', 'r', 'class'],

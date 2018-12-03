@@ -152,7 +152,7 @@ def cv2_show_OCR_result(img, score, text):
     cv2.polylines(img, points, 0, (255, 0, 0), 2)
     cv2.putText(img, text, (0, 60), 2, 2, (0, 0, 255), 2)
     # image/text/left-top/font type/size/color/width
-    cv2.imshow('img', img)
+    cv2.imshow(text, img)
     cv2.waitKey(1)
 
 

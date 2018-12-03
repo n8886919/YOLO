@@ -36,7 +36,7 @@ def main():
         yolo_gluon.export(yolo.net,
                           (1, 3, yolo.size[0], yolo.size[1]),
                           yolo.export_file,
-                          onnx=False, ep=0)
+                          onnx=True, epoch=0)
 
     elif args.mode == 'kmean':
         yolo.get_default_anchors()
@@ -78,11 +78,12 @@ class YOLO(object):
             self.spec = spec
             return 0
 
+        self.version = args.version
+        self.record = args.record
+        self._init_net(spec, args.weight)
         self.export_file = args.version + '/export/YOLO_export'
         if args.mode == 'train' or args.mode == 'export':
-            self.version = args.version
-            self.record = args.record
-            self._init_net(spec, args.weight)
+
             self._init_train()
 
         elif args.mode == 'valid':
@@ -92,7 +93,7 @@ class YOLO(object):
 
     # -------------------- Training Part -------------------- #
     def _init_net(self, spec, weight):
-        self.net = CarLPNet(spec, num_sync_bn_devices=-1)
+        self.net = CarLPNet(spec, num_sync_bn_devices=len(self.ctx))
         # Do not set num_sync_bn_devices=len(self.ctx)
         # because No conversion function for contrib_SyncBatchNorm yet.
         # (ONNX)
@@ -753,7 +754,7 @@ class YOLO(object):
             imgs, labels = car_renderer.render(bg, 'valid', pascal_rate=0.5, render_rate=0.9)
             imgs, LP_labels = LP_generator.add(imgs, self.LP_r_max, add_rate=0.8)
 
-            outs = self.predict(imgs, LP=True, bind=0)
+            outs = self.predict(imgs, LP=True, bind=1)
             # outs[car or LP][batch]
             img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
             img, clipped_LP = LP_generator.project_rect_6d.add_edges(

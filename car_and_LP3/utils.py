@@ -97,6 +97,11 @@ def video_Parser():
         dest="tensorrt", default=0, type=int,
         help="use Tensor_RT or not")
 
+    parser.add_argument(
+        "--record",
+        dest="record", default=0, type=int,
+        help="record or not")
+
     parser.parse_args().radar = bool(parser.parse_args().radar)
     parser.parse_args().show = bool(parser.parse_args().show)
     parser.parse_args().LP = bool(parser.parse_args().LP)

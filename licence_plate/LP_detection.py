@@ -65,6 +65,16 @@ def Parser():
     return parser.parse_args()
 
 
+def slice_out(x):
+    x = x.transpose((0, 2, 3, 1))
+    score_x = x.slice_axis(begin=0, end=1, axis=-1)
+    xy = x.slice_axis(begin=1, end=3, axis=-1)
+    z = x.slice_axis(begin=3, end=4, axis=-1)
+    r = x.slice_axis(begin=4, end=7, axis=-1)
+    class_x = x.slice_axis(begin=7, end=10, axis=-1)
+    return [score_x, xy, z, r, class_x]
+
+
 class LicencePlateDetectioin():
     def __init__(self, args):
         spec_path = os.path.join(args.version, 'spec.yaml')
@@ -75,16 +85,14 @@ class LicencePlateDetectioin():
             setattr(self, key, spec[key])
 
         self.ctx = yolo_gluon.get_ctx(args.gpu)
-        self.export_file = args.version + '/export/YOLO_export'
-        if args.mode == 'train' or args.mode == 'export':
-
+        self.export_file = args.version + '/export/'
+        if args.mode != 'video':  # train/valid/export
+            self.backup_dir = os.path.join(args.version, 'backup')
             self.net = LPDenseNet(
                 self.num_init_features,
                 self.growth_rate,
                 self.block_config,
                 classes=self.num_class)
-
-            self.backup_dir = os.path.join(args.version, 'backup')
 
             if args.weight is None:
                 args.weight = yolo_gluon.get_latest_weight_from(
@@ -97,7 +105,7 @@ class LicencePlateDetectioin():
                 self.record = args.record
                 self._init_train()
 
-        if args.mode == 'video':
+        else:
             self.tensorrt = args.tensorrt
             self.topic = args.topic
             self.show = args.show
@@ -141,7 +149,6 @@ class LicencePlateDetectioin():
 
         w_feature = np.clip(int(L[7].asnumpy()/32), 0, 31)
         h_feature = np.clip(int(L[8].asnumpy()/32), 0, 19)
-        # best_pixel = y * 16 + x
 
         t_X = L[1] / 1000.
         t_Y = L[2] / 1000.
@@ -195,6 +202,7 @@ class LicencePlateDetectioin():
             for gpu_i, (bx, by) in enumerate(zip(bxs, bys)):
                 # ---------- Forward ---------- #
                 by_ = self.net(bx)
+                by_ = slice_out(bx)
                 loss = self._get_loss(by_, by, gpu_i)
 
                 # ---------- Backward ---------- #
@@ -244,8 +252,8 @@ class LicencePlateDetectioin():
         if mode == 'val':
             self.batch_size = 1
             ax = yolo_cv.init_matplotlib_figure()
-            self.net = yolo_gluon.init_executor(
-                self.export_file, self.size, self.ctx[0])
+            # self.net = yolo_gluon.init_executor(
+            #    self.export_file, self.size, self.ctx[0])
 
         # -------------------- background -------------------- #
         LP_generator = licence_plate_render.LPGenerator(*self.size)
@@ -267,7 +275,8 @@ class LicencePlateDetectioin():
                 self._train_batch(batch_xs, batch_ys)
 
             elif mode == 'val':
-                batch_out = self.net.forward(is_train=False, data=imgs)
+                # batch_out = self.net.forward(is_train=False, data=imgs)
+                batch_out = self.net(imgs)
                 pred = self.predict(batch_out)
 
                 img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
@@ -283,6 +292,7 @@ class LicencePlateDetectioin():
                 raw_input('--------------------------------------------------')
 
     def predict(self, batch_out):
+        batch_out = slice_out(batch_out)
         out = nd.concat(nd.sigmoid(batch_out[0]), *batch_out[1:], dim=-1)[0]
         # (10L, 16L, 10L)
         best_index = out[:, :, 0].reshape(-1).argmax(axis=0)
@@ -307,6 +317,7 @@ class LicencePlateDetectioin():
 
     def video(self):
         rospy.init_node("LP_Detection", anonymous=True)
+
         self.net = yolo_gluon.init_executor(
             self.export_file, self.size, self.ctx[0],
             use_tensor_rt=self.tensorrt)
@@ -325,6 +336,21 @@ class LicencePlateDetectioin():
         print('checkpoint file: %s' % self.export_file)
 
         self.LP_generator = licence_plate_render.LPGenerator(*self.size)
+        '''# test inference rate
+        data = nd.zeros(
+            (1, 3, self.size[0], self.size[1])).as_in_context(self.ctx[0])
+        for _ in range(10):
+            x1 = self.net.forward(is_train=False, data=data)
+            x1[0].wait_to_read()
+
+        t = time.time()
+        cycle = 100
+        for _ in range(100):
+            x1 = self.net.forward(is_train=False, data=data)
+            x1[0].wait_to_read()
+        print(global_variable.yellow)
+        print('Inference Rate = %.2f' % (cycle/float(time.time() - t)))
+        '''
         r = rospy.Rate(30)
         while not rospy.is_shutdown():
             if hasattr(self, 'img') and self.img is not None:
@@ -352,13 +378,14 @@ class LicencePlateDetectioin():
         nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0) / 255.
 
         out = self.net.forward(is_train=False, data=nd_img)
-        pred = self.predict(out)
+        pred = self.predict(out[0])
 
         if pred[0] > 0.9:
             self.img, clipped_LP = self.LP_generator.project_rect_6d.add_edges(
                 img, pred[1:])
             self.clipped_LP_pub.publish(
                 self.bridge.cv2_to_imgmsg(clipped_LP, 'bgr8'))
+
         else:
             self.img = img
 

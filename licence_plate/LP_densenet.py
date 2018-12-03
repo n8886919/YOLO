@@ -36,11 +36,4 @@ class LPDenseNet(mxnet.gluon.HybridBlock):
 
     def hybrid_forward(self, F, x):
         x = self.features(x)
-        x = x.transpose((0, 2, 3, 1))
-
-        score_x = x.slice_axis(begin=0, end=1, axis=-1)
-        xy = x.slice_axis(begin=1, end=3, axis=-1)
-        z = x.slice_axis(begin=3, end=4, axis=-1)
-        r = x.slice_axis(begin=4, end=7, axis=-1)
-        class_x = x.slice_axis(begin=7, end=10, axis=-1)
-        return [score_x, xy, z, r, class_x]
+        return x

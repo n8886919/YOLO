@@ -33,8 +33,6 @@ def main():
     rospy.sleep(3)  # camera warm up
     while not rospy.is_shutdown():
         if hasattr(video, 'img') and video.img is not None:
-
-            #nd_img = video.resz(nd.array(video.img))
             nd_img = nd.array(video.img).as_in_context(video.ctx)
             nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0) / 255.
             out = video.yolo.predict(nd_img, LP=True, bind=1)
@@ -62,7 +60,6 @@ class Video():
         self.flip = args.flip
         self.clip = (args.clip_h, args.clip_w)
         self.ctx = [gpu(int(i)) for i in args.gpu][0]
-
 
         #self.resz = mxnet.image.ForceResizeAug((self.yolo.size[1], self.yolo.size[0]))
         if self.radar:

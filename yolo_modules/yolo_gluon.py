@@ -65,8 +65,13 @@ def export(net, batch_shape, export_file, onnx=False, epoch=0):
     if not os.path.exists(export_file):
         os.makedirs(export_file)
     net.export(export_file, epoch=epoch)
+
     if onnx:
-        onnx_file = os.path.join(export_file, 'onnx')
+        path = os.path.join(export_file, 'onnx')
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        onnx_file = os.path.join(path, 'out.onnx')
         print('export onnx to: %s' % onnx_file)
         sym = export_file + '-symbol.json'
         params = export_file + '-%04d.params' % epoch
