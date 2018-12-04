@@ -116,18 +116,12 @@ def train_the(batch_xs, batch_ys):
 
 def record_to_tensorboard(loss):
     global backward_counter
-
-    for i, L in enumerate(loss):
-        summary_writer.add_scalar(
-            str(i),
-            nd.mean(L).asnumpy(),
-            backward_counter)
+    n = ['score', 'class']
+    yolo_gluon.record_loss(loss, n, summary_writer, step=backward_counter)
 
     backward_counter += 1
     if backward_counter % record_step == 0:
-        save_path = os.path.join(
-            backup_dir,
-            args.version + '_%d' % backward_counter)
+        save_path = os.path.join(backup_dir, args.version + '_%d')
 
         net.collect_params().save(save_path)
 
@@ -149,10 +143,11 @@ def cv2_show_OCR_result(img, score, text):
     points = np.concatenate((x, y), axis=-1)
     points = np.expand_dims(points, axis=0).astype(np.int32)
 
-    cv2.polylines(img, points, 0, (255, 0, 0), 2)
+    #cv2.polylines(img, points, 0, (255, 0, 0), 2)
     cv2.putText(img, text, (0, 60), 2, 2, (0, 0, 255), 2)
+    print(text)
     # image/text/left-top/font type/size/color/width
-    cv2.imshow(text, img)
+    cv2.imshow('img', img)
     cv2.waitKey(1)
 
 
@@ -190,7 +185,8 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-ctx = [gpu(int(i)) for i in args.gpu]
+ctx = yolo_gluon.get_ctx(args.gpu)
+
 size = [160, 384]
 cls_names = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
@@ -210,7 +206,7 @@ num_init_features = 32
 growth_rate = 12
 block_config = [6, 12, 24]
 
-export_file = args.version + '/export/YOLO_export'
+export_file = args.version + '/export/'
 if args.mode != 'video':
     net = OCRDenseNet(num_init_features, growth_rate, block_config, classes=34)
     backup_dir = os.path.join(args.version, 'backup')
@@ -279,7 +275,7 @@ elif args.mode == 'valid':
         score_x, class_x = net(imgs)
 
         imgs = yolo_gluon.batch_ndimg_2_cv2img(imgs)
-        for i, ax in range(bs):
+        for i in range(bs):
             ax = axs[i]
             s = score_x[i]
             s = nd.sigmoid(s.reshape(-1)).asnumpy()
@@ -302,14 +298,7 @@ elif args.mode == 'valid':
         raw_input('press Enter to next batch....')
 
 elif args.mode == 'video':
-    sym, arg_params, aux_params = mxnet.model.load_checkpoint(export_file, 0)
-    executor = sym.simple_bind(
-        ctx=ctx[0],
-        data=(1, 3, size[0], size[1]),
-        grad_req='null',
-        force_rebind=True)
-    executor.copy_params_from(arg_params, aux_params)
-
+    executor = yolo_gluon.init_executor(export_file, size, ctx[0])
     bridge = CvBridge()
     rospy.init_node("OCR_node", anonymous=True)
     pub = rospy.Publisher('YOLO/OCR', String, queue_size=0)
@@ -336,19 +325,5 @@ elif args.mode == 'video':
         r.sleep()
 
 elif args.mode == 'export':
-    batch_shape = (1, 3, size[0], size[1])
-    data = nd.zeros(batch_shape).as_in_context(ctx[0])
-    '''
-    t = time.time()
-    for _ in range(1000):
-        x1, x2 = net.forward(data)
-        x1.wait_to_read()
-    print(time.time() - t)
-    '''
-    print(global_variable.yellow)
-    print('export model to: %s' % export_file)
-    if not os.path.exists(export_file):
-        os.makedirs(export_file)
-
-    net.forward(data)
-    net.export(export_file)
+    shape = (1, 3, size[0], size[1])
+    yolo_gluon.export(net, shape, export_file)

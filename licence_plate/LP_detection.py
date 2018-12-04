@@ -315,51 +315,57 @@ class LicencePlateDetectioin():
 
         self._train_or_valid('val')
 
-    def video(self):
-        rospy.init_node("LP_Detection", anonymous=True)
-
-        self.net = yolo_gluon.init_executor(
-            self.export_file, self.size, self.ctx[0],
+    def video(self, record=False):
+        LP_size = int(380*1.05), int(160*1.05)
+        pjct_6d = licence_plate_render.ProjectRectangle6D(LP_size)
+        net = yolo_gluon.init_executor(
+            self.export_file,
+            self.size,
+            self.ctx[0],
             use_tensor_rt=self.tensorrt)
 
+        # -------------------- ROS -------------------- #
         self.bridge = CvBridge()
-
-        self.clipped_LP_pub = rospy.Publisher(
-            self.pub_clipped_LP, Image, queue_size=0)
-
-        self.LP_pub = rospy.Publisher(
-            self.pub_LP, Float32MultiArray, queue_size=0)
+        rospy.init_node("LP_Detection", anonymous=True)
+        LP_pub = rospy.Publisher(self.pub_clipped_LP, Image, queue_size=0)
+        ps_pub = rospy.Publisher(self.pub_LP, Float32MultiArray, queue_size=0)
 
         rospy.Subscriber(self.topic, Image, self._image_callback)
 
         print('Image Topic: /YOLO/clipped_LP')
         print('checkpoint file: %s' % self.export_file)
 
-        self.LP_generator = licence_plate_render.LPGenerator(*self.size)
-        '''# test inference rate
-        data = nd.zeros(
-            (1, 3, self.size[0], self.size[1])).as_in_context(self.ctx[0])
-        for _ in range(10):
-            x1 = self.net.forward(is_train=False, data=data)
-            x1[0].wait_to_read()
+        # -------------------- video record -------------------- #
+        if record:
+            time = datetime.datetime.now().strftime("%m-%dx%H-%M")
+            out_file = os.path.join('video', 'LPD_ % s.avi' % time)
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            v_size = (640, 480)
+            video_out = cv2.VideoWriter(out_file, fourcc, 30, v_size)
 
-        t = time.time()
-        cycle = 100
-        for _ in range(100):
-            x1 = self.net.forward(is_train=False, data=data)
-            x1[0].wait_to_read()
-        print(global_variable.yellow)
-        print('Inference Rate = %.2f' % (cycle/float(time.time() - t)))
-        '''
         r = rospy.Rate(30)
         while not rospy.is_shutdown():
             if hasattr(self, 'img') and self.img is not None:
-                # add bbox and show
-                #nd_img = video.resz(nd.array(video.img))
+                ori_img = self.img.copy()
+                img = self.img.copy()
+
+                resized_img = cv2.resize(img, tuple(self.size[::-1]))
+                nd_img = yolo_gluon.cv_img_2_ndarray(resized_img, self.ctx[0])
+
+                out = net.forward(is_train=False, data=nd_img)
+                pred = self.predict(out[0])
+
+                if pred[0] > 0.9:
+                    img, clipped_LP = pjct_6d.add_edges(img, pred[1:])
+                    clipped_LP = self.bridge.cv2_to_imgmsg(clipped_LP, 'bgr8')
+                    LP_pub.publish(clipped_LP)
+
                 if self.show:
-                    cv2.imshow('img', self.img)
+                    cv2.imshow('img', img)
                     cv2.waitKey(1)
 
+                if record:
+                    video_out.write(ori_img)
             else:
                 print('Wait For Image')
             r.sleep()
@@ -372,22 +378,7 @@ class LicencePlateDetectioin():
                           onnx=True)
 
     def _image_callback(self, img):
-        img = self.bridge.imgmsg_to_cv2(img, "bgr8")
-        resized_img = cv2.resize(img, tuple(self.size[::-1]))
-        nd_img = nd.array(resized_img).as_in_context(self.ctx[0])
-        nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0) / 255.
-
-        out = self.net.forward(is_train=False, data=nd_img)
-        pred = self.predict(out[0])
-
-        if pred[0] > 0.9:
-            self.img, clipped_LP = self.LP_generator.project_rect_6d.add_edges(
-                img, pred[1:])
-            self.clipped_LP_pub.publish(
-                self.bridge.cv2_to_imgmsg(clipped_LP, 'bgr8'))
-
-        else:
-            self.img = img
+        self.img = self.bridge.imgmsg_to_cv2(img, "bgr8")
 
 
 if __name__ == '__main__':

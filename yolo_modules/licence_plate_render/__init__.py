@@ -356,7 +356,7 @@ class ProjectRectangle6D():
         clipped_LP = cv2.warpPerspective(img, M, (LP_size[1], LP_size[0]))
 
         p = np.expand_dims(corner_pts, axis=0).astype(np.int32)
-        img = cv2.polylines(img, p, 1, (0, 0, 1), 2)
+        img = cv2.polylines(img, p, 1, (0, 0, 255), 2)
 
         return img, clipped_LP
 

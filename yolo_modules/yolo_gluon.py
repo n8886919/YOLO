@@ -4,9 +4,32 @@ import os
 import PIL
 
 import mxnet
-from mxnet import nd
+from mxnet import nd, gpu
 
 from yolo_modules import global_variable
+
+
+def cv_img_2_ndarray(image, ctx):
+    nd_img = nd.array(image).as_in_context(ctx)
+    nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0) / 255.
+
+    return nd_img
+
+
+def test_inference_rate(net, shape, cycles=100, ctx=mxnet.gpu(0)):
+    # shape =  (1, 3, size[0], size[1])
+    data = nd.zeros(shape).as_in_context(ctx)
+    for _ in range(10):
+        x = net.forward(is_train=False, data=data)
+        x[0].wait_to_read()
+
+    t = time.time()
+    for _ in range(cycles):
+        x1 = net.forward(is_train=False, data=data)
+        x1[0].wait_to_read()
+
+    print(global_variable.yellow)
+    print('Inference Rate = %.2f' % (cycles/float(time.time() - t)))
 
 
 def init_executor(export_file, size, ctx, use_tensor_rt=False, step=0):
@@ -56,7 +79,7 @@ def record_loss(losses, loss_names, summary_writer, step=0, exp=''):
             step)
 
 
-def export(net, batch_shape, export_file, onnx=False, epoch=0):
+def export(net, batch_shape, export_file, onnx=True, epoch=0):
     data = nd.zeros(batch_shape).as_in_context(mxnet.gpu(0))
     net.forward(data)
 
