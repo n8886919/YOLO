@@ -23,6 +23,9 @@ from yolo_modules import licence_plate_render
 from yolo_modules import yolo_cv
 from yolo_modules import yolo_gluon
 
+os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
+os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
+
 
 def main():
     args = Parser()
@@ -316,8 +319,8 @@ class LicencePlateDetectioin():
         self._train_or_valid('val')
 
     def video(self, record=False):
-        LP_size = int(380*1.05), int(160*1.05)
-        pjct_6d = licence_plate_render.ProjectRectangle6D(LP_size)
+        LP_size = (int(380*1.05), int(160*1.05))
+        pjct_6d = licence_plate_render.ProjectRectangle6D(*LP_size)
         net = yolo_gluon.init_executor(
             self.export_file,
             self.size,
