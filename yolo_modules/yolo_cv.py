@@ -204,8 +204,10 @@ class RadarProb():
 def open_tx2_onboard_camera(width, height):
     # On versions of L4T previous to L4T 28.1, flip-method=2
     # Use Jetson onboard camera
-    gst_str = ("nvcamerasrc ! "
-               "video/x-raw(memory:NVMM), width=(int)2592, height=(int)1458, format=(string)I420, framerate=(fraction)30/1 ! "
-               "nvvidconv ! video/x-raw, width=(int){}, height=(int){}, format=(string)BGRx ! "
-               "videoconvert ! appsink").format(width, height)
+    gst_str = ('nvcamerasrc ! '
+               'video/x-raw(memory:NVMM), '
+               'width=(int)2592, height=(int)1458, format=(string)I420, framerate=(fraction)30/1 ! '
+               'nvvidconv ! video/x-raw, width=(int){}, height=(int){}, format=(string)BGR ! '
+               'videoconvert ! appsink').format(width, height)
     return cv2.VideoCapture(gst_str, cv2.CAP_GSTREAMER)
+

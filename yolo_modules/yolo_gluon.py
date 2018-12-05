@@ -1,6 +1,7 @@
 import glob
 import numpy
 import os
+import time
 import PIL
 
 import mxnet
