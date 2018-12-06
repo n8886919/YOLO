@@ -46,7 +46,7 @@ class PILImageEnhance():
         N = kwargs['N'] if 'N' in kwargs else self.N
         w, h = img.size
 
-        m, n = np.random.random()*M*2-M, np.random.random()*N*2-N # +-M or N
+        m, n = np.random.random()*M*2-M, np.random.random()*N*2-N  # +-M or N
         xshift, yshift = abs(m)*h, abs(n)*w
 
         w, h = w + int(round(xshift)), h + int(round(yshift))
@@ -201,11 +201,27 @@ class RadarProb():
         return vec_ang, vec_rad, prob
 
 
-def open_tx2_onboard_camera(width, height):
+def open_tx2_onboard_camera(width, height, dev):
     # On versions of L4T previous to L4T 28.1, flip-method=2
     # Use Jetson onboard camera
-    gst_str = ("nvcamerasrc ! "
-               "video/x-raw(memory:NVMM), width=(int)2592, height=(int)1458, format=(string)I420, framerate=(fraction)30/1 ! "
-               "nvvidconv ! video/x-raw, width=(int){}, height=(int){}, format=(string)BGRx ! "
-               "videoconvert ! appsink").format(width, height)
+    if dev == 'xavier':
+        gst_str = (
+            'nvarguscamerasrc ! video/x-raw(memory:NVMM), '
+            'width=(int){}, height=(int){}, '
+            'format=(string)NV12, framerate=30/1 ! '
+            'nvvidconv !'
+            'video/x-raw, format=(string)BGRx ! '
+            'videoconvert ! video/x-raw, format=(string)RGB" ! '
+            'appsink').format(width, height)
+
+    elif dev == 'tx2':
+        gst_str = (
+            'nvcamerasrc ! video/x-raw(memory:NVMM), '
+            'width=(int)2592, height=(int)1458, '
+            'format=(string)I420, framerate=(fraction)30/1 ! '
+            'nvvidconv ! '
+            'video/x-raw, width=(int){}, height=(int){}, format=(string)BGR ! '
+            'videoconvert ! '
+            'appsink').format(width, height)
+
     return cv2.VideoCapture(gst_str, cv2.CAP_GSTREAMER)

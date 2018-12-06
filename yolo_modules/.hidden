@@ -1,5 +1,6 @@
 basic_yolo.pyc
-cv.pyc
+yolo_cv.pyc
+yolo_gluon.pyc
 gluon.pyc
 global_variable.pyc
 __pycache__

@@ -5,6 +5,7 @@ import datetime
 import math
 import numpy as np
 import os
+import threading
 import time
 import yaml
 
@@ -30,6 +31,10 @@ os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 def main():
     args = Parser()
     LP_detection = LicencePlateDetectioin(args)
+    available_mode = ['train', 'valid', 'export', 'video']
+    assert args.mode in available_mode, \
+        'Available Modes Are {}'.format(available_mode)
+
     exec "LP_detection.%s()" % args.mode
 
 
@@ -89,6 +94,7 @@ class LicencePlateDetectioin():
 
         self.ctx = yolo_gluon.get_ctx(args.gpu)
         self.export_file = args.version + '/export/'
+
         if args.mode != 'video':  # train/valid/export
             self.backup_dir = os.path.join(args.version, 'backup')
             self.net = LPDenseNet(
@@ -224,7 +230,8 @@ class LicencePlateDetectioin():
 
         # ---------- Save Weights ---------- #
         if self.backward_counter % self.record_step == 0:
-            path = self._gen_save_path()
+            idx = self.backward_counter // self.record_step
+            path = os.path.join(self.backup_dir, self.exp + '_%d' % idx)
             self.net.collect_params().save(path)
 
     def _get_loss(self, by_, by, gpu_i):
@@ -243,10 +250,6 @@ class LicencePlateDetectioin():
         r = self.L1_loss(by_[3], by[3], mask * self.scale['r'])
         c = self.CE_loss(by_[4], by[4], mask * self.scale['class'])
         return (s, xy, z, r, c)
-
-    def _gen_save_path(self):
-        idx = self.backward_counter // self.record_step
-        return os.path.join(self.backup_dir, self.exp + '_%d' % idx)
 
     def _train_or_valid(self, mode):
         print(global_variable.cyan)
@@ -300,11 +303,11 @@ class LicencePlateDetectioin():
         # (10L, 16L, 10L)
         best_index = out[:, :, 0].reshape(-1).argmax(axis=0)
         out = out.reshape((-1, 10))
-
         pred = out[best_index].reshape(-1)  # best out
 
         pred[1:3] *= 1000
         pred[3] = nd.exp(pred[3]) * 1000
+
         for i in range(3):
             p = (nd.sigmoid(pred[i+4]) - 0.5) * 2 * self.r_max[i]
             pred[i+4] = p * math.pi / 180.
@@ -321,7 +324,8 @@ class LicencePlateDetectioin():
     def video(self, record=False):
         LP_size = (int(380*1.05), int(160*1.05))
         pjct_6d = licence_plate_render.ProjectRectangle6D(*LP_size)
-        net = yolo_gluon.init_executor(
+
+        self.net = yolo_gluon.init_executor(
             self.export_file,
             self.size,
             self.ctx[0],
@@ -333,55 +337,107 @@ class LicencePlateDetectioin():
         LP_pub = rospy.Publisher(self.pub_clipped_LP, Image, queue_size=0)
         ps_pub = rospy.Publisher(self.pub_LP, Float32MultiArray, queue_size=0)
 
-        rospy.Subscriber(self.topic, Image, self._image_callback)
+        #rospy.Subscriber(self.topic, Image, self._image_callback)
+        threading.Thread(target=self._get_frame).start()
 
+        pose = Float32MultiArray()
+        rate = rospy.Rate(100)
         print('Image Topic: /YOLO/clipped_LP')
         print('checkpoint file: %s' % self.export_file)
 
         # -------------------- video record -------------------- #
         if record:
-            time = datetime.datetime.now().strftime("%m-%dx%H-%M")
-            out_file = os.path.join('video', 'LPD_ % s.avi' % time)
+            start_time = datetime.datetime.now().strftime("%m-%dx%H-%M")
+            out_file = os.path.join('video', 'LPD_ % s.avi' % start_time)
             fourcc = cv2.VideoWriter_fourcc(*'XVID')
             v_size = (640, 480)
             video_out = cv2.VideoWriter(out_file, fourcc, 30, v_size)
 
-        r = rospy.Rate(30)
+        shape = (1, 3, 320, 512)
+        yolo_gluon.test_inference_rate(self.net, shape, cycles=100, ctx=mxnet.gpu(0))
+
+        self.lock = threading.Lock()
+        threading.Thread(target=self._net_thread).start()
+        self.mx_resize = mxnet.image.ForceResizeAug(tuple(self.size[::-1]),interp=2)
         while not rospy.is_shutdown():
-            if hasattr(self, 'img') and self.img is not None:
-                ori_img = self.img.copy()
-                img = self.img.copy()
+            if not hasattr(self, 'net_out') or \
+               not hasattr(self, 'net_img'):
+                rate.sleep()
+                continue
 
-                resized_img = cv2.resize(img, tuple(self.size[::-1]))
-                nd_img = yolo_gluon.cv_img_2_ndarray(resized_img, self.ctx[0])
+            img = self.net_img.copy()
+            net_out = self.net_out.copy()
+            pred = self.predict(self.net_out)
+            ps_pub.publish(pose)
 
-                out = net.forward(is_train=False, data=nd_img)
-                pred = self.predict(out[0])
+            if pred[0] > 0.0:
+                img, clipped_LP = pjct_6d.add_edges(img, pred[1:])
+                clipped_LP = self.bridge.cv2_to_imgmsg(clipped_LP, 'bgr8')
+                LP_pub.publish(clipped_LP)
 
-                if pred[0] > 0.9:
-                    img, clipped_LP = pjct_6d.add_edges(img, pred[1:])
-                    clipped_LP = self.bridge.cv2_to_imgmsg(clipped_LP, 'bgr8')
-                    LP_pub.publish(clipped_LP)
+            if self.show:
+                cv2.imshow('img', img)
+                cv2.waitKey(1)
+            #video_out.write(ori_img)
+            rate.sleep()
 
-                if self.show:
-                    cv2.imshow('img', img)
-                    cv2.waitKey(1)
-
-                if record:
-                    video_out.write(ori_img)
-            else:
+    def _net_thread(self):
+        while not rospy.is_shutdown():
+            if not hasattr(self, 'img') or self.img is None:
                 print('Wait For Image')
-            r.sleep()
+                time.sleep(1.0)
+                continue
+            #self.lock.acquire()
+            self.net_img = self.img.copy()
+            '''
+            resized_img = cv2.resize(self.net_img, tuple(self.size[::-1]))
+            nd_img = yolo_gluon.cv_img_2_ndarray(resized_img, self.ctx[0])
+            '''
+            nd_img = nd.array(self.net_img)
+            nd_img = self.mx_resize(nd_img).as_in_context(self.ctx[0])
+            nd_img = nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0) / 255.
 
-    def export(self):
-        shape = (1, 3, self.size[0], self.size[1])
-        yolo_gluon.export(self.net,
-                          shape,
-                          self.export_file,
-                          onnx=True)
+            self.net_out = self.net.forward(is_train=False, data=nd_img)[0]
+            #self.lock.release()
+            self.net_out.wait_to_read()
 
     def _image_callback(self, img):
+
         self.img = self.bridge.imgmsg_to_cv2(img, "bgr8")
+
+    def _get_frame(self):
+        dev = '0'  # self.dev
+
+        if dev == 'tx2':
+            cap = yolo_cv.open_tx2_onboard_camera(640, 360)
+
+        elif '.' in dev:
+            cap = cv2.VideoCapture(dev)
+            pause = 0.1
+
+        elif type(dev) == str:
+            print('Image Source: /dev/video' + dev)
+            cap = cv2.VideoCapture(int(dev))
+
+        else:
+            print(global_variable.red)
+            print(('dev should be '
+                   'tx2(str) or '
+                   'video_path(str) or '
+                   'device_index(int)'))
+
+        while not rospy.is_shutdown():
+            ret, self.img = cap.read()
+            #self.img = self.cv2_flip_and_clip_frame(img)
+
+        cap.release()
+
+    def export(self):
+        yolo_gluon.export(
+            self.net,
+            (1, 3, self.size[0], self.size[1]),
+            self.export_file,
+            onnx=True, epoch=0)
 
 
 if __name__ == '__main__':

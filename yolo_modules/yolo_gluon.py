@@ -1,6 +1,7 @@
 import glob
 import numpy
 import os
+import time
 import PIL
 
 import mxnet
@@ -9,8 +10,12 @@ from mxnet import nd, gpu
 from yolo_modules import global_variable
 
 
-def cv_img_2_ndarray(image, ctx):
-    nd_img = nd.array(image).as_in_context(ctx)
+def cv_img_2_ndarray(image, ctx, mxnet_resize=None):
+    nd_img = nd.array(image)
+    if mxnet_resize is not None:
+        nd_img = mxnet_resize(nd_img)
+
+    nd_img = nd_img.as_in_context(ctx)
     nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0) / 255.
 
     return nd_img

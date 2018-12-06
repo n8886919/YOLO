@@ -12,9 +12,10 @@ import PIL
 
 from yolo_modules import yolo_cv
 from yolo_modules import global_variable
-
+'''
 rad_2_deg = lambda rad: rad * 180. / math.pi
 deg_2_rad = lambda deg: deg * math.pi / 180.
+'''
 
 
 class RenderCar():
@@ -26,7 +27,7 @@ class RenderCar():
         self.ctx = ctx
         self.BIL = PIL.Image.BILINEAR
 
-        self.pil_image_enhance = yolo_cv.pil_image_enhancement.PILImageEnhance(M=0, N=0, R=30.0, G=0.3, noise_var=0)
+        self.pil_image_enhance = yolo_cv.PILImageEnhance(M=0, N=0, R=30.0, G=0.3, noise_var=0)
         self.augs = mxnet.image.CreateAugmenter(data_shape=(3, img_h, img_w),
             inter_method=10, brightness=0.5, contrast=0.5, saturation=0.5, hue=1.0, pca_noise=0.1)
 
@@ -61,28 +62,28 @@ class RenderCar():
         '''
         Parameters
         ----------
-        bg: mxnet.ndarray(4D) 
-          background array, 
+        bg: mxnet.ndarray(4D)
+          background array,
           dimension = bs * channel * h * w
         mode: {'train', 'valid'}
 
         Returns
         ----------
-        img_batch: mxnet.ndarray(4D) 
+        img_batch: mxnet.ndarray(4D)
 
-        label_batch: mxnet.ndarray(3D) 
+        label_batch: mxnet.ndarray(3D)
           bs * object * [cls, y(0~1), x(0~1), h(0~1), w(0~1), r(+-pi)]
         '''
         dataset = self.pascal_dataset[mode] if pascal else self.rawcar_dataset[mode]
 
         ctx = self.ctx
-        label_batch = nd.ones((self.bs,1,6), ctx=ctx) * (-1)
-        img_batch = nd.zeros((self.bs,3,self.h,self.w), ctx=ctx)
-        mask = nd.zeros((self.bs,3,self.h,self.w), ctx=ctx)
+        label_batch = nd.ones((self.bs, 1, 6), ctx=ctx) * (-1)
+        img_batch = nd.zeros((self.bs, 3, self.h, self.w), ctx=ctx)
+        mask = nd.zeros((self.bs, 3, self.h, self.w), ctx=ctx)
         selected = np.random.randint(len(dataset), size=self.bs)
 
         for i in range(self.bs):
-            if np.random.rand() > prob: 
+            if np.random.rand() > prob:
                 continue
 
             img_path = dataset[selected[i]]
@@ -108,16 +109,16 @@ class RenderCar():
                 h_min_scale = 0.2*self.h / float(box_h)
                 min_scale = max(w_min_scale, h_min_scale)
 
-
             else:
                 min_scale = 0.25
                 max_scale = 1.0
-            #################### resize ####################
+            # -------------------- resize -------------------- #
             resize = np.random.uniform(low=min_scale, high=max_scale)
             resize_w = resize * pil_img.size[0]
             resize_h = resize * pil_img.size[1] * r1
             pil_img = pil_img.resize((int(resize_w), int(resize_h)), self.BIL)
-            #################### resize ####################
+
+            # -------------------- resize -------------------- #
             if pascal:
                 box_w = resize * box_w
                 box_h = resize * box_h * r1
@@ -135,7 +136,7 @@ class RenderCar():
                     for y in [box_t2, box_b2]:
                         rotated_corner = [x*math.cos(r)-y*math.sin(r), y*math.cos(r)+x*math.sin(r)]
                         new_corner.append(rotated_corner)
-                
+
                 r_resize_w = abs(resize_h * math.sin(r)) + abs(resize_w * math.cos(r))
                 r_resize_h = abs(resize_h * math.cos(r)) + abs(resize_w * math.sin(r))
 
@@ -150,36 +151,35 @@ class RenderCar():
                 pil_img, r = self.pil_image_enhance(pil_img)
                 r_box_l, r_box_t, r_box_r, r_box_b = pil_img.getbbox()
 
-            r_box_w = r_box_r - r_box_l # r_box_xx means after rotate       
-            r_box_h = r_box_b - r_box_t # r_box_xx means after rotate       
-                    
+            r_box_w = r_box_r - r_box_l  # r_box_xx means after rotate
+            r_box_h = r_box_b - r_box_t  # r_box_xx means after rotate
 
             ##################### move #####################
             paste_x = np.random.randint(
-                low=int(-r_box_l-0.2*r_box_w), 
+                low=int(-r_box_l-0.2*r_box_w),
                 high=int(self.w-r_box_l-0.8*r_box_w)
             )
             paste_y = np.random.randint(
-                low=int(-r_box_t-0.2*r_box_h), 
+                low=int(-r_box_t-0.2*r_box_h),
                 high=int(self.h-r_box_t-0.8*r_box_h)
             )
-            
+
             box_x = (r_box_r + r_box_l)/2. + paste_x
-            box_y = (r_box_b + r_box_t)/2. + paste_y 
+            box_y = (r_box_b + r_box_t)/2. + paste_y
             ####################################################################
             tmp = PIL.Image.new('RGBA', (self.w, self.h))
             tmp.paste(pil_img, (paste_x, paste_y))
 
             m = nd.array(tmp.split()[-1], ctx=ctx).reshape(1, self.h, self.w)
-            mask[i] = nd.tile(m, (3,1,1)) / 255.
+            mask[i] = nd.tile(m, (3, 1, 1)) / 255.
 
             fg = PIL.Image.merge("RGB", (tmp.split()[:3]))
-            fg = nd.array(fg)####
-            for aug in self.augs: fg = aug(fg)
+            fg = nd.array(fg)
+            for aug in self.augs:
+                fg = aug(fg)
 
-            
             ####################################################################
-            img_batch[i] = fg.as_in_context(ctx).transpose((2,0,1))
+            img_batch[i] = fg.as_in_context(ctx).transpose((2, 0, 1))
             label_batch[i] = nd.array([[
                 img_cls,
                 float(box_y)/self.h,

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import cv2
 import math
 import os
@@ -97,7 +98,7 @@ class LPGenerator():
         return LP, LP_type, label
 
     def random_projection_LP_6D(self, LP, in_size, out_size, r_max):
-        Z = np.random.uniform(low=1000., high=3000.)
+        Z = np.random.uniform(low=500., high=4000.)
         X = (Z * 8 / 30.) * np.random.uniform(low=-1, high=1)
         Y = (Z * 6 / 30.) * np.random.uniform(low=-1, high=1)
         r1 = np.random.uniform(low=-1, high=1) * r_max[0] * math.pi / 180.
@@ -279,6 +280,13 @@ class ProjectRectangle6D():
         self.fy = spec['projection_matrix']['data'][5]
         self.cx = spec['projection_matrix']['data'][2]
         self.cy = spec['projection_matrix']['data'][6]
+        '''
+        self.camera_w = sympy.Symbol('w')
+        self.camera_h = sympy.Symbol('h')
+        self.fx = sympy.Symbol('fx')
+        self.fy = sympy.Symbol('fy')
+        self.cx = sympy.Symbol('cx')
+        self.cy = sympy.Symbol('cy')
 
         self.X = sympy.Symbol('X')
         self.Y = sympy.Symbol('Y')
@@ -319,15 +327,45 @@ class ProjectRectangle6D():
 
         extrinsic_matrix = R3 * R2 * R1 * P_3d + T_matrix
         self.projection_matrix = intrinsic_matrix * extrinsic_matrix
+        '''
+
+    def projection_matrix(self, pose):
+        X, Y, Z, r1, r2, r3 = pose
+        sin = math.sin
+        cos = math.cos
+
+        a = sin(r1) * cos(r2) * 84.0
+        b = sin(r1) * sin(r2) * cos(r3) * 84.0
+        c = sin(r2) * 199.5
+        d = sin(r3) * cos(r1) * 84.0
+        e = cos(r2) * cos(r3) * 199.5
+        f = sin(r1) * sin(r2) * sin(r3) * 84.0
+        g = sin(r3) * cos(r2) * 199.5
+        h = cos(r1) * cos(r3) * 84.0
+
+        ans = np.array([
+            [self.cx*(Z + a - c) + self.fx*(X + b - d + e),
+             self.cx*(Z + a + c) + self.fx*(X + b - d - e),
+             self.cx*(Z - a + c) + self.fx*(X - b + d - e),
+             self.cx*(Z - a - c) + self.fx*(X - b + d + e)],
+            [self.cy*(Z + a - c) + self.fy*(Y + f + g + h),
+             self.cy*(Z + a + c) + self.fy*(Y + f - g + h),
+             self.cy*(Z - a + c) + self.fy*(Y - f - g - h),
+             self.cy*(Z - a - c) + self.fy*(Y - f + g - h)],
+            [Z + a - c, Z + a + c, Z - a + c, Z - a - c]])
+
+        return ans
 
     def __call__(self, pose_6d):
         # [mm, mm, mm, rad, rad, rad]
         points = np.zeros((4, 2))
+        '''
         subs = {
             self.X: pose_6d[0], self.Y: pose_6d[1], self.Z: pose_6d[2],
             self.r1: pose_6d[3], self.r2: pose_6d[4], self.r3: pose_6d[5]}
-
         ans = self.projection_matrix.evalf(subs=subs)
+        '''
+        ans = self.projection_matrix(pose_6d[:6])
         for i in range(4):
             points[i, 0] = ans[0, i] / ans[2, i]
             points[i, 1] = ans[1, i] / ans[2, i]
@@ -351,10 +389,9 @@ class ProjectRectangle6D():
                                 [0, LP_size[0]],
                                 [0, 0],
                                 [LP_size[1], 0]])
+
         M = cv2.getPerspectiveTransform(corner_pts, LP_corner)
-
         clipped_LP = cv2.warpPerspective(img, M, (LP_size[1], LP_size[0]))
-
         p = np.expand_dims(corner_pts, axis=0).astype(np.int32)
         img = cv2.polylines(img, p, 1, (0, 0, 255), 2)
 
@@ -364,3 +401,57 @@ class ProjectRectangle6D():
 if __name__ == '__main__':
     g = LPGenerator(640, 480, 0)
     g.test_render(4)
+'''
+a = 84.0*sin(r1)*cos(r2)
+b = 84.0*sin(r1)*sin(r2)*cos(r3)
+c = 199.5*sin(r2)
+d = 84.0*sin(r3)*cos(r1)
+e = 199.5*cos(r2)*cos(r3)
+f = 84.0*sin(r1)*sin(r2)*sin(r3)
+g = 199.5*sin(r3)*cos(r2)
+h = 84.0*cos(r1)*cos(r3)
+
+[
+ [
+  cx*(Z + a - c) + fx*(X + b - d + e),
+  cx*(Z + a + c) + fx*(X + b - d - e),
+  cx*(Z - a + c) + fx*(X - b + d - e),
+  cx*(Z - a - c) + fx*(X - b + d + e)],
+
+ [
+  cy*(Z + a - c) + fy*(Y + f + g + h),
+  cy*(Z + a + c) + fy*(Y + f - g + h),
+  cy*(Z - a + c) + fy*(Y - f - g - h),
+  cy*(Z - a - c) + fy*(Y - f + g - h)],
+
+ [
+  Z + a - c,
+  Z + a + c,
+  Z - a + c,
+  Z - a - c]
+]
+'''
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -7,6 +7,7 @@
   num_init_features: 64,
   growth_rate: 24,
   block_config: [6, 12, 24, 24],
+
   batch_size: 24,
   record_step: 1000,
   learning_rate: 0.001,

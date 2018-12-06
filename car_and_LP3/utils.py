@@ -39,7 +39,7 @@ def video_Parser():
     parser.add_argument("version", help="v1")
 
     # -------------------- select options -------------------- #
-    parser.add_argument("--mode", help="ignore this", dest="mode", default="valid")
+    parser.add_argument("--mode", help="ignore this", dest="mode", default="video")
     parser.add_argument("--gpu", help="gpu index", dest="gpu", default="0")
 
     parser.add_argument(

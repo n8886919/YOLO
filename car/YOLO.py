@@ -22,9 +22,6 @@ from car_and_LP3.utils import yolo_Parser
 from car_and_LP3.YOLO import YOLO as car_and_LP3_YOLO
 from render_car import *
 
-#os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
-#os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
-
 
 def main():
     args = yolo_Parser()
@@ -58,19 +55,17 @@ class YOLO(car_and_LP3_YOLO):
 
         if args.mode == 'export':
             self.net = CarLPNet(self.spec, num_sync_bn_devices=len(self.ctx))
-            yolo_gluon.init_NN(
-            self.net, 'v2/backup/iter_107000', self.ctx)
+            yolo_gluon.init_NN(self.net, 'v2/backup/iter_107000', self.ctx)
         elif args.mode == 'valid':
             self._init_executor(use_tensor_rt=args.tensorrt)
 
-        
     def predict(self, x, LP=False, bind=0):
         if not bind:
             batch_out, LP_batch_out = self.net(x)
 
         else:
-            batch_out = self.executor.forward(is_train=False, data=x)
-        
+            batch_out = self.net.forward(is_train=False, data=x)
+
         batch_score = nd.sigmoid(batch_out[0])
         batch_box = self._yxhw_to_ltrb(batch_out[1])
         batch_out = nd.concat(
@@ -103,7 +98,7 @@ class YOLO(car_and_LP3_YOLO):
         h, w = self.size
         ax1 = yolo_cv.init_matplotlib_figure()
         #ax2 = yolo_cv.init_matplotlib_figure()
-        #radar_prob = yolo_cv.RadarProb(self.num_class, self.classes)
+        radar_prob = yolo_cv.RadarProb(self.num_class)
 
         BG_iter = yolo_gluon.load_background('val', bs, h, w)
         LP_generator = licence_plate_render.LPGenerator(h, w)
@@ -117,13 +112,19 @@ class YOLO(car_and_LP3_YOLO):
             outs = self.predict(imgs, bind=1)
             # outs[car or LP][batch]
             img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
+            # Green Box
+            img = yolo_cv.cv2_add_bbox(img, labels[0, 0].asnumpy(), 4, use_r=1)
+            # Red Box
+            img = yolo_cv.cv2_add_bbox(img, outs[0][0], 5, use_r=1)
 
-            #img = yolo_cv.cv2_add_bbox(img, labels[0, 0].asnumpy(), 4, use_r=1)  # Green
-            img = yolo_cv.cv2_add_bbox(img, outs[0][0], 5, use_r=1)  # Red box
-            #radar_prob.plot(outs[0][0, 0], outs[0][0, -self.num_class:])
+            print(outs[0][0].shape)
+            vec_ang, vec_rad, prob = radar_prob.cls2ang(
+                outs[0][0, 0], outs[0][0, -self.num_class:])
+            radar_prob.plot(vec_ang, vec_rad, prob)
 
             yolo_cv.matplotlib_show_img(ax1, img)
             raw_input('next')
+
 
 # -------------------- Main -------------------- #
 if __name__ == '__main__':

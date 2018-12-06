@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import datetime
-
 import sys
 import threading
 import time
@@ -26,26 +25,11 @@ def main():
     args = yolo_Parser()
     yolo = YOLO(args)
 
-    if args.mode == 'train':
-        yolo.render_and_train2()
+    available_mode = ['train', 'valid', 'export', 'kmean', 'pr']
+    assert args.mode in available_mode, \
+        'Available Modes Are {}'.format(available_mode)
 
-    elif args.mode == 'valid':
-        yolo.valid()
-
-    elif args.mode == 'export':
-        yolo_gluon.export(yolo.net,
-                          (1, 3, yolo.size[0], yolo.size[1]),
-                          yolo.export_file,
-                          onnx=True, epoch=0)
-
-    elif args.mode == 'kmean':
-        yolo.get_default_anchors()
-
-    elif args.mode == 'PR':
-        yolo.pr_curve()
-
-    else:
-        print('args 2 should be train or valid')
+    exec "yolo.%s()" % args.mode
 
 
 class YOLO(object):
@@ -71,32 +55,32 @@ class YOLO(object):
         self.ctx = [gpu(int(i)) for i in args.gpu]
 
         self._init_syxhw()
-        print(global_variable.yellow)
-        print('Device = {}'.format(self.ctx))
 
         if args.version == 'v2':  # 24 classes, no ele
             self.spec = spec
-            return 0
+            return
+
+        self.export_file = args.version + '/export/YOLO_export'
+        if args.mode == 'video':
+            self._init_executor()
+            return
 
         self.version = args.version
         self.record = args.record
         self._init_net(spec, args.weight)
-        self.export_file = args.version + '/export/YOLO_export'
-        if args.mode == 'train' or args.mode == 'export':
-
+        if args.mode == 'train':
             self._init_train()
 
         elif args.mode == 'valid':
-            self.car_threshold = 0.6
-            self.LP_threshold = 0.9
             self._init_executor(use_tensor_rt=args.tensorrt)
 
     # -------------------- Training Part -------------------- #
     def _init_net(self, spec, weight):
-        self.net = CarLPNet(spec, num_sync_bn_devices=len(self.ctx))
         # Do not set num_sync_bn_devices=len(self.ctx)
         # because No conversion function for contrib_SyncBatchNorm yet.
         # (ONNX)
+        # self.net = CarLPNet(spec, num_sync_bn_devices=len(self.cx))
+        self.net = CarLPNet(spec, num_sync_bn_devices=-1)
         self.backup_dir = os.path.join(self.version, 'backup')
 
         if weight is None:
@@ -128,7 +112,6 @@ class YOLO(object):
 
         self._get_default_ltrb()
 
-        #self.Huber_loss = gluon.loss.HuberLoss()
         self.L1_loss = gluon.loss.L1Loss()
         self.L2_loss = gluon.loss.L2Loss()
         self.LG_loss = gluon.loss.LogisticLoss(label_format='binary')
@@ -258,57 +241,6 @@ class YOLO(object):
 
         return [C_score, C_box_yx, C_box_hw, C_rotate, C_class], C_mask
 
-    def _find_best_LP(self, L, gpu_index):
-        x = np.clip(int(L[7].asnumpy()/16), 0, 31)
-        y = np.clip(int(L[8].asnumpy()/16), 0, 19)
-        best_pixel = y*32 + x
-
-        t_X = L[1] / 1000.
-        t_Y = L[2] / 1000.
-        t_Z = nd.log(L[3]/1000.)
-        r1_max = self.LP_r_max[0] * 2 * math.pi / 180.
-        r2_max = self.LP_r_max[1] * 2 * math.pi / 180.
-        r3_max = self.LP_r_max[2] * 2 * math.pi / 180.
-
-        t_r1 = yolo_gluon.nd_inv_sigmoid(L[4] / r1_max + 0.5)
-        t_r2 = yolo_gluon.nd_inv_sigmoid(L[5] / r2_max + 0.5)
-        t_r3 = yolo_gluon.nd_inv_sigmoid(L[6] / r3_max + 0.5)
-
-        label = nd.concat(t_X, t_Y, t_Z, t_r1, t_r2, t_r3, dim=-1)
-        return best_pixel, 0, label
-
-    def _loss_mask_LP(self, label_batch, gpu_index):
-        """Generate training targets given predictions and label_batch.
-        label_batch: bs*object*[class, cent_y, cent_x, box_h, box_w, rotate]
-        """
-        bs = label_batch.shape[0]
-        a = self.area[0]
-        n = 1  # len(self.all_anchors[0])
-        ctx = self.ctx[gpu_index]
-
-        score = nd.zeros((bs, a, n, 1), ctx=ctx)
-        mask = nd.zeros((bs, a, n, 1), ctx=ctx)
-        pose_xy = nd.zeros((bs, a, n, 2), ctx=ctx)
-        pose_z = nd.zeros((bs, a, n, 1), ctx=ctx)
-        pose_r = nd.zeros((bs, a, n, 3), ctx=ctx)
-        LP_class = nd.zeros((bs, a, n, self.LP_num_class), ctx=ctx)
-
-        for b in range(bs):
-            for L in label_batch[b]:  # all object in the image
-                if L[0] < 0:
-                    continue
-
-                else:
-                    px, anc, p_6D = self._find_best_LP(L, gpu_index)
-                    score[b, px, 0, :] = 1.0  # others are zero
-                    mask[b, px, 0, :] = 1.0  # others are zero
-                    pose_xy[b, px, 0, :] = p_6D[:2]
-                    pose_z[b, px, 0, :] = p_6D[2]
-                    pose_r[b, px, 0, :] = p_6D[3:]
-                    LP_class[b, px, anc, L[-1]] = 1
-
-        return [score, pose_xy, pose_z, pose_r, LP_class], mask
-
     def _score_weight(self, mode, mask, ctx):
         if mode == 'car':
             n = self.negative_weight
@@ -323,28 +255,7 @@ class YOLO(object):
 
         return score_weight
 
-    def _get_loss(self, mode, x, y, s_weight, mask, car_rotate=False):
-        assert mode == 'car' or mode == 'LP', (
-            'mode(arg1) of get_loss should be car or LP')
-
-        if mode == 'car':
-            rotate_lr = self.scale['rotate'] if car_rotate else 0
-            s = self.LG_loss(x[0], y[0], s_weight * self.scale['score'])
-            yx = self.L2_loss(x[1], y[1], mask * self.scale['box_yx'])
-            hw = self.L2_loss(x[2], y[2], mask * self.scale['box_hw'])
-            r = self.L1_loss(x[3], y[3], mask * rotate_lr)
-            c = self.CE_loss(x[4], y[4], mask * self.scale['class'])
-            return (s, yx, hw, r, c)
-
-        elif mode == 'LP':
-            s = self.LG_loss(x[0], y[0], s_weight * self.scale['LP_score'])
-            xy = self.L2_loss(x[1], y[1], mask * self.scale['LP_xy'])
-            z = self.L2_loss(x[2], y[2], mask * self.scale['LP_z'])
-            r = self.L1_loss(x[3], y[3], mask * self.scale['LP_r'])
-            c = self.CE_loss(x[4], y[4], mask * self.scale['LP_class'])
-            return (s, xy, z, r, c)
-
-    def _train_the(self, bxs, car_bys=None, LP_bys=None, car_rotate=False):
+    def _train_batch(self, bxs, car_bys=None, LP_bys=None, car_rotate=False):
         all_gpu_loss = []
         with mxnet.autograd.record():
             for gpu_i in range(len(bxs)):
@@ -361,7 +272,7 @@ class YOLO(object):
                         s_weight = self._score_weight('car', mask, ctx)
 
                     car_loss = self._get_loss(
-                        'car', x, y, s_weight, mask, car_rotate=car_rotate)
+                        x, y, s_weight, mask, car_rotate=car_rotate)
 
                     all_gpu_loss[gpu_i].extend(car_loss)
 
@@ -371,8 +282,9 @@ class YOLO(object):
                         LP_y, LP_mask = self._loss_mask_LP(LP_by, gpu_i)
                         LP_s_weight = self._score_weight('LP', LP_mask, ctx)
 
-                    LP_loss = self._get_loss(
-                        'LP', LP_x, LP_y, LP_s_weight, LP_mask)
+                    LP_loss = self._LP_get_loss(
+                        LP_x, LP_y, LP_s_weight, LP_mask)
+
                     all_gpu_loss[gpu_i].extend(LP_loss)
 
                 sum(all_gpu_loss[gpu_i]).backward()
@@ -416,7 +328,7 @@ class YOLO(object):
             car_batch_ys = yolo_gluon.split_render_data(labels, self.ctx)
             LP_batch_ys = yolo_gluon.split_render_data(LP_labels, self.ctx)
 
-            self._train_the(batch_xs, car_bys=car_batch_ys, LP_bys=LP_batch_ys)
+            self._train_batch(batch_xs, car_bys=car_batch_ys, LP_bys=LP_batch_ys)
 
             # -------------------- show training image # --------------------
             '''
@@ -427,7 +339,7 @@ class YOLO(object):
             raw_input()
             '''
 
-    def render_and_train2(self):
+    def train(self):
         print(global_variable.cyan)
         print('Render And Train (Double Threads)')
 
@@ -463,7 +375,7 @@ class YOLO(object):
             LP_batch_ys = yolo_gluon.split_render_data(LP_batch_ys, self.ctx)
 
             self.rendering_done = False
-            self._train_the(batch_xs, car_bys=car_batch_ys, LP_bys=LP_batch_ys)
+            self._train_batch(batch_xs, car_bys=car_batch_ys, LP_bys=LP_batch_ys)
 
     def _render_thread(self):
         h, w = self.size
@@ -510,7 +422,9 @@ class YOLO(object):
                 bg = bg.data[0].as_in_context(self.ctx[0])
                 imgs, labels = self.car_renderer.render(
                     bg, 'valid', pascal_rate=pascal_rate)
-                outs, _ = self.predict(imgs, bind=0)
+
+                batch_out, LP_batch_out = self.net(imgs)
+                outs, _ = self.predict(batch_out, LP_batch_out, bind=0)
 
                 pred = nd.zeros((self.iou_bs, 4))
                 pred[:, 0] = outs[:, 2] - outs[:, 4] / 2
@@ -532,28 +446,19 @@ class YOLO(object):
             self.bg_iter_valid.reset()
 
     def _record_to_tensorboard_and_save(self, loss):
-        for i, L in enumerate(loss):
-            loss_name = self.loss_name[i]
-            self.sw.add_scalar(
-                self.exp + 'Scaled_Loss',
-                (loss_name, nd.mean(L).asnumpy()),
-                self.backward_counter)
-
-            self.sw.add_scalar(
-                loss_name,
-                (self.exp, nd.mean(L).asnumpy()/self.scale[loss_name]),
-                self.backward_counter)
+        self.backward_counter += 1  # do not save at first step
+        if self.backward_counter % 10 == 0:
+            yolo_gluon.record_loss(
+                loss, self.loss_name, self.sw,
+                step=self.backward_counter, exp=self.exp)
 
         if self.backward_counter % self.valid_step == 0:
             self._valid_iou()
 
-        self.backward_counter += 1
         if self.backward_counter % self.record_step == 0:
-            idx = self.backward_counter//self.record_step
-            save_path = os.path.join(
-                self.backup_dir, self.exp + 'iter' + '_%d' % idx)
-
-            self.net.collect_params().save(save_path)
+            idx = self.backward_counter // self.record_step
+            path = os.path.join(self.backup_dir, self.exp + '_%d' % idx)
+            self.net.collect_params().save(path)
 
     # -------------------- Validation Part -------------------- #
     def _init_executor(self, use_tensor_rt=False):
@@ -567,7 +472,7 @@ class YOLO(object):
 
             arg_params.update(aux_params)
             all_params = dict([(k, v.as_in_context(self.ctx[0])) for k, v in arg_params.items()])
-            self.executor = mx.contrib.tensorrt.tensorrt_bind(
+            self.net = mx.contrib.tensorrt.tensorrt_bind(
                 sym,
                 all_params=all_params,
                 ctx=self.ctx[0],
@@ -576,12 +481,12 @@ class YOLO(object):
                 force_rebind=True)
 
         else:
-            self.executor = sym.simple_bind(
+            self.net = sym.simple_bind(
                 ctx=self.ctx[0],
                 data=(1, 3, self.size[0], self.size[1]),
                 grad_req='null',
                 force_rebind=True)
-            self.executor.copy_params_from(arg_params, aux_params)
+            self.net.copy_params_from(arg_params, aux_params)
 
     def _init_syxhw(self):
         size = self.size
@@ -633,15 +538,7 @@ class YOLO(object):
         b = by + bh2
         return nd.concat(l, t, r, b, dim=-1)
 
-    def predict(self, x, LP=False, bind=0):
-        if not bind:
-            batch_out, LP_batch_out = self.net(x)
-
-        else:
-            out = self.executor.forward(is_train=False, data=x)
-            batch_out = out[:5]
-            LP_batch_out = out[5:]
-
+    def predict(self, batch_out, LP_batch_out):
         batch_score = nd.sigmoid(batch_out[0])
         batch_box = nd.concat(batch_out[1], batch_out[2], dim=-1)
         batch_box = self._yxhw_to_ltrb(batch_box)
@@ -665,31 +562,27 @@ class YOLO(object):
 
         batch_pred = nd.concat(*batch_pred, dim=0)
 
-        if not LP:
-            return batch_pred.asnumpy(), 0  # [score,y,x,h,w,r,........]
+        LP_score = nd.sigmoid(LP_batch_out[0])
+        LP_pose_xy = LP_batch_out[1]
+        LP_pose_z = LP_batch_out[2]
+        LP_pose_r = LP_batch_out[3]
+        LP_batch_out = nd.concat(
+            LP_score, LP_pose_xy, LP_pose_z, LP_pose_r, dim=-1)
 
-        else:
-            LP_score = nd.sigmoid(LP_batch_out[0])
-            LP_pose_xy = LP_batch_out[1]
-            LP_pose_z = LP_batch_out[2]
-            LP_pose_r = LP_batch_out[3]
-            LP_batch_out = nd.concat(
-                LP_score, LP_pose_xy, LP_pose_z, LP_pose_r, dim=-1)
+        LP_batch_out = nd.split(LP_batch_out, axis=0, num_outputs=len(LP_batch_out))
 
-            LP_batch_out = nd.split(LP_batch_out, axis=0, num_outputs=len(LP_batch_out))
+        LP_batch_pred = []
+        for i, out in enumerate(LP_batch_out):
+            best_index = LP_score[i].reshape(-1).argmax(axis=0)
+            out = out.reshape((-1, 7))
 
-            LP_batch_pred = []
-            for i, out in enumerate(LP_batch_out):
-                best_index = LP_score[i].reshape(-1).argmax(axis=0)
-                out = out.reshape((-1, 7))
+            pred = out[best_index][0]  # best out
+            pred[1:7] = self.LP_pose_activation(pred[1:7])
+            LP_batch_pred.append(nd.expand_dims(pred, axis=0))
 
-                pred = out[best_index][0]  # best out
-                pred[1:7] = self.LP_pose_activation(pred[1:7])
-                LP_batch_pred.append(nd.expand_dims(pred, axis=0))
+        LP_batch_pred = nd.concat(*LP_batch_pred, dim=0)
 
-            LP_batch_pred = nd.concat(*LP_batch_pred, dim=0)
-
-            return batch_pred.asnumpy(), LP_batch_pred.asnumpy()
+        return batch_pred.asnumpy(), LP_batch_pred.asnumpy()
 
     def LP_pose_activation(self, data_in):
         data_out = nd.zeros(6)
@@ -704,7 +597,7 @@ class YOLO(object):
 
         return data_out
 
-    def get_default_anchors(self):
+    def kmean(self):
         import yolo_modules.iou_kmeans as kmeans
         print(global_variable.cyan)
         print('KMeans Get Default Anchors')
@@ -754,21 +647,100 @@ class YOLO(object):
             imgs, labels = car_renderer.render(bg, 'valid', pascal_rate=0.5, render_rate=0.9)
             imgs, LP_labels = LP_generator.add(imgs, self.LP_r_max, add_rate=0.8)
 
-            outs = self.predict(imgs, LP=True, bind=1)
+            out = self.net.forward(is_train=False, data=imgs)
+            outs = self.predict(out[:5], out[5:])
             # outs[car or LP][batch]
             img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
             img, clipped_LP = LP_generator.project_rect_6d.add_edges(
                 img, outs[1][0, 1:])
             #LP_pose = outs[1][0, 1:]
+
             img = yolo_cv.cv2_add_bbox(img, labels[0, 0].asnumpy(), 4, use_r=0)
             # Green
             img = yolo_cv.cv2_add_bbox(img, outs[0][0], 5, use_r=0)
             # Red box
+
             radar_prob.plot3d(outs[0][0, 0], outs[0][0, -self.num_class:])
 
             yolo_cv.matplotlib_show_img(ax1, img)
             yolo_cv.matplotlib_show_img(ax2, clipped_LP)
             raw_input('next')
+
+    # -------------------- same as LP -------------------- #
+    def export(self):
+        yolo_gluon.export(
+            self.net,
+            (1, 3, self.size[0], self.size[1]),
+            self.export_file,
+            onnx=False, epoch=0)
+
+    def _find_best_LP(self, L, gpu_index):
+        x = np.clip(int(L[7].asnumpy()/16), 0, 31)
+        y = np.clip(int(L[8].asnumpy()/16), 0, 19)
+        best_pixel = y*32 + x
+
+        t_X = L[1] / 1000.
+        t_Y = L[2] / 1000.
+        t_Z = nd.log(L[3]/1000.)
+        r1_max = self.LP_r_max[0] * 2 * math.pi / 180.
+        r2_max = self.LP_r_max[1] * 2 * math.pi / 180.
+        r3_max = self.LP_r_max[2] * 2 * math.pi / 180.
+
+        t_r1 = yolo_gluon.nd_inv_sigmoid(L[4] / r1_max + 0.5)
+        t_r2 = yolo_gluon.nd_inv_sigmoid(L[5] / r2_max + 0.5)
+        t_r3 = yolo_gluon.nd_inv_sigmoid(L[6] / r3_max + 0.5)
+
+        label = nd.concat(t_X, t_Y, t_Z, t_r1, t_r2, t_r3, dim=-1)
+        return best_pixel, 0, label
+
+    def _loss_mask_LP(self, label_batch, gpu_index):
+        """Generate training targets given predictions and label_batch.
+        label_batch: bs*object*[class, cent_y, cent_x, box_h, box_w, rotate]
+        """
+        bs = label_batch.shape[0]
+        a = self.area[0]
+        n = 1  # len(self.all_anchors[0])
+        ctx = self.ctx[gpu_index]
+
+        score = nd.zeros((bs, a, n, 1), ctx=ctx)
+        mask = nd.zeros((bs, a, n, 1), ctx=ctx)
+        pose_xy = nd.zeros((bs, a, n, 2), ctx=ctx)
+        pose_z = nd.zeros((bs, a, n, 1), ctx=ctx)
+        pose_r = nd.zeros((bs, a, n, 3), ctx=ctx)
+        LP_class = nd.zeros((bs, a, n, self.LP_num_class), ctx=ctx)
+
+        for b in range(bs):
+            for L in label_batch[b]:  # all object in the image
+                if L[0] < 0:
+                    continue
+
+                else:
+                    px, anc, p_6D = self._find_best_LP(L, gpu_index)
+                    score[b, px, 0, :] = 1.0  # others are zero
+                    mask[b, px, 0, :] = 1.0  # others are zero
+                    pose_xy[b, px, 0, :] = p_6D[:2]
+                    pose_z[b, px, 0, :] = p_6D[2]
+                    pose_r[b, px, 0, :] = p_6D[3:]
+                    LP_class[b, px, anc, L[-1]] = 1
+
+        return [score, pose_xy, pose_z, pose_r, LP_class], mask
+
+    def _get_loss(self, x, y, s_weight, mask, car_rotate=False):
+        rotate_lr = self.scale['rotate'] if car_rotate else 0
+        s = self.LG_loss(x[0], y[0], s_weight * self.scale['score'])
+        yx = self.L2_loss(x[1], y[1], mask * self.scale['box_yx'])
+        hw = self.L1_loss(x[2], y[2], mask * self.scale['box_hw'])
+        r = self.L1_loss(x[3], y[3], mask * rotate_lr)
+        c = self.CE_loss(x[4], y[4], mask * self.scale['class'])
+        return (s, yx, hw, r, c)
+
+    def _LP_get_loss(self, x, y, s_weight, mask):
+        s = self.LG_loss(x[0], y[0], s_weight * self.scale['LP_score'])
+        xy = self.L2_loss(x[1], y[1], mask * self.scale['LP_xy'])
+        z = self.L2_loss(x[2], y[2], mask * self.scale['LP_z'])
+        r = self.L1_loss(x[3], y[3], mask * self.scale['LP_r'])
+        c = self.CE_loss(x[4], y[4], mask * self.scale['LP_class'])
+        return (s, xy, z, r, c)
 
 
 '''
