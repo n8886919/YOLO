@@ -91,6 +91,16 @@ def matplotlib_show_img(ax, img):
     ax.axis('off')
 
 
+def white_balance(img, bgr=None):
+    if bgr is not None and len(bgr) == 3:
+        img = img.astype(int) * bgr
+    else:
+        avg = img.mean(axis=(0, 1))
+        img = img.astype(int) * sum(avg) / (avg * 3)
+
+    return np.clip(img, 0, 255).astype(np.uint8)
+
+
 def _numpy_softmax(x):
 
     return np.exp(x)/np.sum(np.exp(x), axis=0)
@@ -111,7 +121,7 @@ def cv2_add_bbox(im, b, color_idx, use_r=True):
         [ w*math.cos(r)/2 + h*math.sin(r)/2,  w*math.sin(r)/2 - h*math.cos(r)/2]]])
     s = np.array([b[2], b[1]])*[im_w, im_h]
     a = (a + s).astype(int)
-    c = np.array(_color[color_idx]) / 255.
+    c = np.array(_color[color_idx])
     cv2.polylines(im, a, 1, c, 2)
     return im
 
@@ -201,7 +211,7 @@ class RadarProb():
         return vec_ang, vec_rad, prob
 
 
-def open_tx2_onboard_camera(width, height, dev):
+def jetson_onboard_camera(width, height, dev):
     # On versions of L4T previous to L4T 28.1, flip-method=2
     # Use Jetson onboard camera
     if dev == 'xavier':

@@ -63,8 +63,8 @@ class BasicYOLONet(gluon.HybridBlock):
         return self.merge_and_slice(F, all_output, self.slice_point)
         # score, yxhw, cls_pred
 
-    def merge_and_slice(self, F, all_output, points):
-        output = F.concat(*all_output, dim=1)
+    def merge_and_slice(self, all_output, points):
+        output = nd.concat(*all_output, dim=1)
         i = 0
         x = []
         for pt in points:

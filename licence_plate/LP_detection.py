@@ -282,7 +282,10 @@ class LicencePlateDetectioin():
 
             elif mode == 'val':
                 # batch_out = self.net.forward(is_train=False, data=imgs)
+                imgs = nd.array(0.5*np.ones((1, 3, 320, 512))).as_in_context(self.ctx[0])
                 batch_out = self.net(imgs)
+                print(batch_out)
+                print(batch_out.shape)
                 pred = self.predict(batch_out)
 
                 img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
@@ -337,8 +340,8 @@ class LicencePlateDetectioin():
         LP_pub = rospy.Publisher(self.pub_clipped_LP, Image, queue_size=0)
         ps_pub = rospy.Publisher(self.pub_LP, Float32MultiArray, queue_size=0)
 
-        #rospy.Subscriber(self.topic, Image, self._image_callback)
-        threading.Thread(target=self._get_frame).start()
+        rospy.Subscriber(self.topic, Image, self._image_callback)
+        #threading.Thread(target=self._get_frame).start()
 
         pose = Float32MultiArray()
         rate = rospy.Rate(100)
@@ -370,7 +373,7 @@ class LicencePlateDetectioin():
             pred = self.predict(self.net_out)
             ps_pub.publish(pose)
 
-            if pred[0] > 0.0:
+            if pred[0] > 0.9:
                 img, clipped_LP = pjct_6d.add_edges(img, pred[1:])
                 clipped_LP = self.bridge.cv2_to_imgmsg(clipped_LP, 'bgr8')
                 LP_pub.publish(clipped_LP)
@@ -403,7 +406,8 @@ class LicencePlateDetectioin():
 
     def _image_callback(self, img):
 
-        self.img = self.bridge.imgmsg_to_cv2(img, "bgr8")
+        img = self.bridge.imgmsg_to_cv2(img, "bgr8")
+        self.img = yolo_cv.white_balance(img, bgr=[1.2, 0.8, 1.0])
 
     def _get_frame(self):
         dev = '0'  # self.dev
@@ -438,6 +442,9 @@ class LicencePlateDetectioin():
             (1, 3, self.size[0], self.size[1]),
             self.export_file,
             onnx=True, epoch=0)
+
+
+
 
 
 if __name__ == '__main__':

@@ -40,7 +40,7 @@ class Video():
 
         self.yolo = YOLO(args)
 
-        self.yolo.car_threshold = 0.6
+        self.yolo.car_threshold = 0.9
         self.yolo.LP_threshold = 0.9
 
         self.project_rect_6d = licence_plate_render.ProjectRectangle6D(
@@ -80,10 +80,11 @@ class Video():
                 './video/car_rotate.mp4', fourcc, 30, (640, 360))
 
     def __call__(self):
+        '''
         yolo_gluon.test_inference_rate(
             self.yolo.net,
             (1, 3, self.yolo.size[0], self.yolo.size[1]))
-
+        '''
         rate = rospy.Rate(30)
 
         while not hasattr(self, 'net_out') or not hasattr(self, 'net_img'):
@@ -92,7 +93,8 @@ class Video():
         while not rospy.is_shutdown():
             net_out = copy.copy(self.net_out)  # not sure type(net_out)
             img = self.net_img.copy()
-            pred = self.yolo.predict(net_out[:5], net_out[5:])
+
+            pred = self.yolo.predict(net_out[:3], [net_out[-1]])
 
             ros_publish_array(self.car_pub, self.mat1, pred[0][0])
             ros_publish_array(self.LP_pub, self.mat2, pred[1][0])
@@ -183,7 +185,7 @@ class Video():
 
         if dev == 'tx2' or dev == 'xavier':
             print('Image Source: Jetson OnBoard Camera')
-            cap = open_cam_onboard(640, 360, dev)
+            cap = jetson_onboard_camera(640, 360, dev)
 
         elif dev.split('.')[-1] in ['mp4', 'avi', '']:
             print('Image Source: ' + dev)
@@ -215,19 +217,18 @@ class Video():
                 time.sleep(1.0)
                 continue
 
-            #self.lock.acquire()
             self.net_img = self.img.copy()
             nd_img = yolo_gluon.cv_img_2_ndarray(
                 self.net_img, self.ctx[0], mxnet_resize=self.mx_resize)
 
             self.net_out = self.yolo.net.forward(is_train=False, data=nd_img)
-            #self.lock.release()
-
-            self.net_out[0].wait_to_read()
+            # self.net_out = [x1, x2, x3, LP_x]
+            self.net_out[-1].wait_to_read()
 
     def _image_callback(self, img):
         img = self.bridge.imgmsg_to_cv2(img, "bgr8")
-        self.img = self.cv2_flip_and_clip_frame(img)
+        img = self.cv2_flip_and_clip_frame(img)
+        self.img = yolo_cv.white_balance(img, bgr=[1.0, 1.0, 1.0])
 
     def visualize(self, out):
         Cout = out[0][0]

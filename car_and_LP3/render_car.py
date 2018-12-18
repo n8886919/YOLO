@@ -36,8 +36,8 @@ class RenderCar():
             data_shape=(3, img_h, img_w), inter_method=10, pca_noise=0.1,
             brightness=0.3, contrast=0.5, saturation=0.5, hue=1.0)
 
-        self.load_png_images()
-        self.load_mtv_images()
+        self.load_png_images('color_material_elemax30')
+        #self.load_mtv_images()
         self.load_pascal_images()
         print(global_variable.reset_color)
 
@@ -177,32 +177,38 @@ class RenderCar():
                     label_distribution])
             break
 
-    def load_png_images(self):
+    def load_png_images(self, dataset):
         # -------------------- load png image and path-------------------- #
-        path = _join(self.disk, 'color_material')
+        path = _join(self.disk, 'blender_car', dataset)
         #path = _join(self.disk, 'no_label_car_raw_images/100')
         cad_path = {
             'train': _join(path, 'train'),
             'valid': _join(path, 'valid')}
         self.rawcar_dataset = {'train': [], 'valid': []}
-
-        if False:  # self.pre_load:
-            print('\033[1;34mLoading png images to RAM')
+        print(global_variable.yellow)
+        print('\033[1;34mLoading png images')
 
         for mode in self.rawcar_dataset:
-            for cad in os.listdir(cad_path[mode]):
+            for cadi, cad in enumerate(os.listdir(cad_path[mode])):
                 for img in os.listdir(_join(cad_path[mode], cad)):
                     img_path = _join(cad_path[mode], cad, img)
                     if False:  # self.pre_load:
-                        ele = (float(img_path.split('ele')[1].split('.')[0]) * math.pi) / (100 * 180)
-                        azi = (float(img_path.split('azi')[1].split('_')[0]) * math.pi) / (100 * 180)
-                        img_cls, label_distribution = self.get_label_dist(ele, azi)
+                        azi = float(img.split('azi')[1].split('_')[0])
+                        ele = float(img.split('ele')[1].split('.')[0])
+
+                        azi = azi * math.pi / 18000.
+                        ele = ele * math.pi / 18000.
+
+                        img_cls, label_dist = self.get_label_dist(ele, azi)
                         with PIL.Image.open(img_path).convert('RGBA') as f:
                             pil_img = np.array(f, dtype="uint8")
-                        self.rawcar_dataset[mode].append([pil_img, img_cls, label_distribution])
+                        self.rawcar_dataset[mode].append(
+                            [pil_img, img_cls, label_dist])
 
                     else:
                         self.rawcar_dataset[mode].append(img_path)
+
+        print('Done')
 
     def load_pascal_images(self):
         # -------------------- set pascal path-------------------- #
@@ -217,9 +223,8 @@ class RenderCar():
         for f in os.listdir(label_path):
             self.pascal3d_anno[f] = sio.loadmat(_join(label_path, f))
 
-        if self.pre_load:
-            print(global_variable.yellow)
-            print('Loading pascal images to RAM')
+        print(global_variable.yellow)
+        print('Loading pascal images')
         # -------------------- load pascal image -------------------- #
         self.pascal_dataset = {'train': [], 'valid': []}
         for mode in self.pascal_dataset:
@@ -238,8 +243,8 @@ class RenderCar():
                          label_distribution])
                 else:
                     self.pascal_dataset[mode].append(img_path)
-        print(global_variable.green)
-        print('Loading pascal images to RAM Done')
+
+        print('Done')
 
     def _render_pascal(self, mode, r1=1.0):
         n = np.random.randint(len(self.pascal_dataset[mode]))
@@ -304,16 +309,19 @@ class RenderCar():
 
     def _render_png(self, mode, r1=1.0):
         n = np.random.randint(len(self.rawcar_dataset[mode]))
-        #n = str(n)
 
         if False:  # self.pre_load:
-            #n = self.pascal_dataset[mode].keys()[n]
-            pil_img, img_cls, label_distribution = self.png_dataset[mode][n]
+            pil_img, img_cls, label_distribution = self.rawcar_dataset[mode][n]
 
         else:
             img_path = self.rawcar_dataset[mode][n]
-            ele = (float(img_path.split('ele')[1].split('.')[0]) * math.pi) / (100 * 180)
-            azi = (float(img_path.split('azi')[1].split('_')[0]) * math.pi) / (100 * 180)
+            img = img_path.split('/')[-1]
+            ele = float(img.split('ele')[1].split('.')[0])
+            azi = float(img.split('azi')[1].split('_')[0])
+
+            ele = ele * math.pi / 18000.
+            azi = azi * math.pi / 18000.
+
             img_cls, label_distribution = self.get_label_dist(ele, azi)
             pil_img = PIL.Image.open(img_path).convert('RGBA')
 
@@ -360,7 +368,7 @@ class RenderCar():
         '''
 
         cos_ang = np.arccos(
-            math.sin(ele) * np.sin(_deg_2_rad(self.ele_label)) + \
+            math.sin(ele) * np.sin(_deg_2_rad(self.ele_label)) +
             math.cos(ele) * np.cos(_deg_2_rad(self.ele_label)) * np.cos(azi-_deg_2_rad(self.azi_label)))
 
         cos_ang = np.expand_dims(cos_ang, axis=0)
