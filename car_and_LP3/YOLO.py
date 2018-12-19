@@ -491,7 +491,10 @@ class YOLO(object):
             os.environ['MXNET_USE_TENSORRT'] = '1'
 
             arg_params.update(aux_params)
-            all_params = dict([(k, v.as_in_context(self.ctx[0])) for k, v in arg_params.items()])
+            all_params = dict(
+                [(k, v.as_in_context(self.ctx[0]))
+                    for k, v in arg_params.items()])
+
             self.net = mx.contrib.tensorrt.tensorrt_bind(
                 sym,
                 all_params=all_params,
@@ -613,7 +616,8 @@ class YOLO(object):
 
         data_out[0] = data_in[0] * 1000
         data_out[1] = data_in[1] * 1000
-        data_out[2] = nd.exp(data_in[2]) * 1000
+        #data_out[2] = nd.exp(data_in[2]) * 1000
+        data_out[2] = data_in[2] * 1000
 
         for i in range(3):
             data = (nd.sigmoid(data_in[i+3]) - 0.5) * 2 * self.LP_r_max[i]
@@ -675,26 +679,19 @@ class YOLO(object):
                 imgs, self.LP_r_max, add_rate=0.8)
 
             x1, x2, x3, LP_x = self.net.forward(is_train=False, data=imgs)
-            print(LP_x.shape)
             outs = self.predict([x1, x2, x3], [LP_x])
 
             img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
             img, clipped_LP = LP_generator.project_rect_6d.add_edges(
                 img, outs[1][0, 1:])
-            #LP_pose = outs[1][0, 1:]
 
             img = yolo_cv.cv2_add_bbox(img, labels[0, 0].asnumpy(), 4, use_r=0)
-            # Green
             img = yolo_cv.cv2_add_bbox(img, outs[0][0], 5, use_r=0)
-            # Red box
-
-            radar_prob.plot3d(outs[0][0, 0], outs[0][0, -self.num_class:])
-
             yolo_cv.matplotlib_show_img(ax1, img)
             yolo_cv.matplotlib_show_img(ax2, clipped_LP)
+            radar_prob.plot3d(outs[0][0, 0], outs[0][0, -self.num_class:])
             raw_input('next')
 
-    # -------------------- same as LP -------------------- #
     def export(self):
         yolo_gluon.export(
             self.net,
@@ -702,6 +699,7 @@ class YOLO(object):
             self.export_file,
             onnx=False, epoch=0)
 
+    # -------------------- same as LP -------------------- #
     def _find_best_LP(self, L, gpu_index):
         x = np.clip(int(L[7].asnumpy()/16), 0, 31)
         y = np.clip(int(L[8].asnumpy()/16), 0, 19)
@@ -709,7 +707,9 @@ class YOLO(object):
 
         t_X = L[1] / 1000.
         t_Y = L[2] / 1000.
-        t_Z = nd.log(L[3]/1000.)
+        #t_Z = nd.log(L[3]/1000.)
+        t_Z = L[3]/1000.
+
         r1_max = self.LP_r_max[0] * 2 * math.pi / 180.
         r2_max = self.LP_r_max[1] * 2 * math.pi / 180.
         r3_max = self.LP_r_max[2] * 2 * math.pi / 180.

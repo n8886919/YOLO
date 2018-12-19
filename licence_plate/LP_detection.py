@@ -333,7 +333,10 @@ class LicencePlateDetectioin():
             self.size,
             self.ctx[0],
             use_tensor_rt=self.tensorrt)
-
+        '''
+        self.net = mxnet.contrib.onnx.onnx2mx.import_to_gluon.import_to_gluon(
+            'v1/export/onnx/out.onnx', self.ctx[0])
+        '''
         # -------------------- ROS -------------------- #
         self.bridge = CvBridge()
         rospy.init_node("LP_Detection", anonymous=True)
@@ -357,7 +360,7 @@ class LicencePlateDetectioin():
             video_out = cv2.VideoWriter(out_file, fourcc, 30, v_size)
 
         shape = (1, 3, 320, 512)
-        yolo_gluon.test_inference_rate(self.net, shape, cycles=100, ctx=mxnet.gpu(0))
+        #yolo_gluon.test_inference_rate(self.net, shape, cycles=100, ctx=mxnet.gpu(0))
 
         self.lock = threading.Lock()
         threading.Thread(target=self._net_thread).start()
@@ -398,14 +401,15 @@ class LicencePlateDetectioin():
             '''
             nd_img = nd.array(self.net_img)
             nd_img = self.mx_resize(nd_img).as_in_context(self.ctx[0])
-            nd_img = nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0) / 255.
-
+            nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0) / 255.
+            nd_img = nd.ones((1, 3, 320, 512)).as_in_context(self.ctx[0])
             self.net_out = self.net.forward(is_train=False, data=nd_img)[0]
-            #self.lock.release()
+            #self.net_out = self.net.forward(nd_img)
+
+            print(self.net_out)
             self.net_out.wait_to_read()
 
     def _image_callback(self, img):
-
         img = self.bridge.imgmsg_to_cv2(img, "bgr8")
         self.img = yolo_cv.white_balance(img, bgr=[1.2, 0.8, 1.0])
 

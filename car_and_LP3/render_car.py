@@ -260,7 +260,7 @@ class RenderCar():
                 n = np.random.randint(len(self.pascal_dataset[mode]))
                 if not skip:
                     break
-
+            print(ele, azi)
             img_cls, label_distribution = self.get_label_dist(ele, azi)
             pil_img = PIL.Image.open(img_path).convert('RGBA')
 
@@ -305,7 +305,8 @@ class RenderCar():
         r_box_l, r_box_t = np.amin(new_corner, axis=0) + offset
         r_box_r, r_box_b = np.amax(new_corner, axis=0) + offset
 
-        return pil_img, r_box_l, r_box_t, r_box_r, r_box_b, r, img_cls, label_distribution
+        return (pil_img, r_box_l, r_box_t, r_box_r, r_box_b,
+                r, img_cls, label_distribution)
 
     def _render_png(self, mode, r1=1.0):
         n = np.random.randint(len(self.rawcar_dataset[mode]))
@@ -433,8 +434,8 @@ class RenderCar():
         # mat[0][3][0][0]: [azi_coarse, ele_coarse, azi, ele, distance, focal,
         #                   px, py, theta, error, interval_azi, interval_ele,
         #                   num_anchor, viewport]
-        ele = mat[0][3][0][0][3][0]
-        azi = mat[0][3][0][0][2][0]
+        ele = mat[0][3][0][0][3][0] * math.pi / 180.
+        azi = mat[0][3][0][0][2][0] * math.pi / 180.
 
         return ele, azi, box, False
 
