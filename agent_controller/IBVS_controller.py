@@ -21,7 +21,7 @@ with open('ibvs_parameter.yaml') as f:
     IBVS_PARAMETER = yaml.load(f)
 
 
-class PID_GUI():
+class PID_GUI(object):
     def __init__(self):
         self.ibvs_controller = IBVS_Controller()
 
@@ -55,11 +55,11 @@ class PID_GUI():
 
         start_IBVS_botton = tk.Radiobutton(
             self.win, text='IBVS',
-            variable=self.fix_pose, value=False, command=self._set_pose)
+            variable=self.fix_pose, value=False, command=self._fix_pose)
 
         fix_pose_botton = tk.Radiobutton(
             self.win, text='Fix Pose',
-            variable=self.fix_pose, value=True, command=self._set_pose)
+            variable=self.fix_pose, value=True, command=self._fix_pose)
 
         self.land = tk.BooleanVar()
         self.land.set(False)
@@ -75,10 +75,10 @@ class PID_GUI():
 
         self._apply()
 
-    def _set_pose(self):
+    def _fix_pose(self):
         b = Bool()
         b.data = self.fix_pose.get()
-        self.ibvs_controller.ibvs_set_pose_pub.publish(b)
+        self.ibvs_controller.ibvs_fix_pose_pub.publish(b)
 
     def _land(self):
         b = Bool()
@@ -106,6 +106,7 @@ class PID_GUI():
 class IBVS_Controller():
     def __init__(self):
         self.LOSS_TARGET_MAX = 30
+        self.car_threshold = 0.2
         self.gain_default = IBVS_PARAMETER['gain_default']
 
         self.gain_keys = []
@@ -120,7 +121,7 @@ class IBVS_Controller():
                 self.gain_keys.append(ax+pid)
                 self.gain[ax+pid] = self.gain_default[ax+pid]
 
-        self.desire_azimuth = 90
+        self.desire_azimuth = 0
         self.loss_target_counter = 0
 
         self._init_ros()
@@ -134,19 +135,34 @@ class IBVS_Controller():
         rospy.sleep(1)  # ???
         rospy.Subscriber('/YOLO/box', Float32MultiArray, self._vel_callback)
 
-        self.ibvs_vel_pub = rospy.Publisher('/ibvs_gui/cmd_vel', TwistStamped, queue_size=1)
-        self.ibvs_pid_pub = rospy.Publisher('/ibvs_gui/pid', Float32MultiArray, queue_size=1)
-        self.ibvs_land_pub = rospy.Publisher('/ibvs_gui/land', Bool, queue_size=1)
-        self.ibvs_set_pose_pub = rospy.Publisher('/ibvs_gui/fix_pose', Bool, queue_size=1)
+        self.ibvs_vel_pub = rospy.Publisher(
+            IBVS_PARAMETER['CMD_VEL_TOPIC'],
+            TwistStamped, queue_size=1)
+
+        self.ibvs_pid_pub = rospy.Publisher(
+            IBVS_PARAMETER['PID_TOPIC'],
+            Float32MultiArray, queue_size=1)
+
+        self.ibvs_land_pub = rospy.Publisher(
+            IBVS_PARAMETER['LAND_TOPIC'],
+            Bool, queue_size=1)
+
+        self.ibvs_fix_pose_pub = rospy.Publisher(
+            IBVS_PARAMETER['FIX_POSE_TOPIC'],
+            Bool, queue_size=1)
 
         self.pid_output = Float32MultiArray()
         self.pid_output.layout.dim.append(MultiArrayDimension())
         self.pid_output.layout.dim.append(MultiArrayDimension())
         self.pid_output.layout.dim[0].label = "axis"
         self.pid_output.layout.dim[1].label = "pid"
-        self.pid_output.data = [0]*len(AXIS) * len(PID)
+        self.pid_output.data = [0] * len(AXIS) * len(PID)
 
     def _vel_callback(self, box):
+        if not hasattr(self, 'heading'):
+            print('Wait For Heading msgs')
+            return
+
         self.t1 = self.t0
         self.t0 = rospy.get_rostime()
 
@@ -169,8 +185,11 @@ class IBVS_Controller():
             local_x = self._vel_bound(local_x, 10, 0.03)
             local_y = self._vel_bound(local_y, 10, 0.03)
 
-            global_x = local_x*math.cos(self.heading) - local_y*math.sin(self.heading)
-            global_y = local_y*math.cos(self.heading) + local_x*math.sin(self.heading)
+            global_x = (local_x*math.cos(self.heading) -
+                        local_y*math.sin(self.heading))
+
+            global_y = (local_y*math.cos(self.heading) +
+                        local_x*math.sin(self.heading))
 
             vel_msgs.twist.linear.x = global_x
             vel_msgs.twist.linear.y = global_y
@@ -194,7 +213,9 @@ class IBVS_Controller():
         self.ibvs_vel_pub.publish(vel_msgs)
 
     def _pose_callback(self, pose):
-        heading = math.atan2(pose.pose.orientation.z, pose.pose.orientation.w) * 2
+        z = pose.pose.orientation.z
+        w = pose.pose.orientation.w
+        heading = math.atan2(z, w) * 2
 
         if heading > math.pi:
             self.heading = heading - 2 * math.pi
@@ -205,20 +226,16 @@ class IBVS_Controller():
 
     def _update_error(self, box, dt):
         # print(dt)
-        if box[0] > 0.8:
+        if box[0] > self.car_threshold:
             self.loss_target_counter = 0
 
-            erry = box[6] - self.desire_azimuth*math.pi/180
-            if erry < -math.pi:
-                erry += 2 * math.pi
-            elif erry > math.pi:
-                erry -= 2 * math.pi
+            erry = get_erry(box[-24:], self.desire_azimuth)
 
             err_now = {
                 #'y': (box[6] - math.pi) if box[6] > 0 else (box[6] + math.pi),
                 'y': erry,
                 'x': 0.18 - box[3] * box[4],
-                'z': 0.5 - box[1],
+                'z': 0.7 - box[1],
                 'w': 0.5 - box[2]
             }
 
@@ -241,7 +258,7 @@ class IBVS_Controller():
             self.err_log_reset()
 
     def _vel_bound(self, x, high_bound, low_bound):
-        x = np.clip(x, high_bound, -high_bound)
+        x = np.clip(x, -high_bound, high_bound)
         if x < low_bound and x > -low_bound:
             x = 0
         return x
@@ -257,7 +274,7 @@ class IBVS_Controller():
                 out_sum += out
                 i += 1
 
-            xyzw_out.append(out)
+            xyzw_out.append(out_sum)
 
         self.ibvs_pid_pub.publish(self.pid_output)
         return xyzw_out
@@ -275,6 +292,30 @@ class IBVS_Controller():
             self.cy = camera_parameter['camera_matrix']['data'][5]
 
 
+_step = 360 / 24
+cos_offset = np.array([math.cos(x*math.pi/180) for x in range(0, 360, _step)])
+sin_offset = np.array([math.sin(x*math.pi/180) for x in range(0, 360, _step)])
+
+
+def get_erry(x, desire_azimuth):
+    prob = np.exp(x)/np.sum(np.exp(x), axis=0)
+    c = sum(cos_offset*prob)
+    s = sum(sin_offset*prob)
+    vec_ang = math.atan2(s, c)
+    vec_rad = (s**2+c**2)**0.5
+    print(vec_ang)
+
+    erry = vec_ang - desire_azimuth * math.pi / 180
+
+    if erry < -math.pi:
+        erry += 2 * math.pi
+    elif erry > math.pi:
+        erry -= 2 * math.pi
+
+    return erry
+
+
 if __name__ == '__main__':
+    #pid_gui = PID_GUI()
     pid_gui = PID_GUI()
     pid_gui.win.mainloop()

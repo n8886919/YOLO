@@ -94,7 +94,7 @@ int main(int argc, char **argv)
     ros::Subscriber cmd_vel_sub = nh.subscribe<geometry_msgs::TwistStamped>
                                 ("/ibvs_gui/cmd_vel", 1, vel_cb);
     ros::Subscriber set_pose_sub = nh.subscribe<std_msgs::Bool>
-                                ("/ibvs_gui/set_pose", 1, set_pose_cb);
+                                ("/ibvs_gui/fix_pose", 1, set_pose_cb);
     ros::Subscriber land_sub = nh.subscribe<std_msgs::Bool>
                                 ("/ibvs_gui/land", 1, land_cb);
 

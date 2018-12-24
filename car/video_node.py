@@ -41,7 +41,7 @@ class Video():
     def __init__(self, args):
         self.yolo = YOLO(args)
 
-        self.car_threshold = 0.1  # 0.9
+        self.car_threshold = 0.2  # 0.9
         self.LP_threshold = 0.7  # 0.9
 
         self.project_rect_6d = licence_plate_render.ProjectRectangle6D(

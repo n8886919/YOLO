@@ -36,7 +36,8 @@ class RenderCar():
             data_shape=(3, img_h, img_w), inter_method=10, pca_noise=0.1,
             brightness=0.3, contrast=0.5, saturation=0.5, hue=1.0)
 
-        self.load_png_images('color_material_elemax30')
+        #self.load_png_images('color_material_elemax30')
+        self.load_png_images('color_and_no_color_elemax20')
         #self.load_mtv_images()
         self.load_pascal_images()
         print(global_variable.reset_color)
@@ -208,7 +209,8 @@ class RenderCar():
                     else:
                         self.rawcar_dataset[mode].append(img_path)
 
-        print('Done')
+        print('Loading %d png images is done' % len(
+            self.rawcar_dataset['train']))
 
     def load_pascal_images(self):
         # -------------------- set pascal path-------------------- #
@@ -243,8 +245,8 @@ class RenderCar():
                          label_distribution])
                 else:
                     self.pascal_dataset[mode].append(img_path)
-
-        print('Done')
+        print('Loading %d pascal images is done' % len(
+            self.pascal_dataset['train']))
 
     def _render_pascal(self, mode, r1=1.0):
         n = np.random.randint(len(self.pascal_dataset[mode]))
@@ -260,7 +262,6 @@ class RenderCar():
                 n = np.random.randint(len(self.pascal_dataset[mode]))
                 if not skip:
                     break
-            print(ele, azi)
             img_cls, label_distribution = self.get_label_dist(ele, azi)
             pil_img = PIL.Image.open(img_path).convert('RGBA')
 

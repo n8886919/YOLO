@@ -1,3 +1,4 @@
+from __future__ import print_function
 import argparse
 import cv2
 import numpy as np
@@ -129,8 +130,8 @@ def record_to_tensorboard(loss):
 def _image_callback(img):
     img = bridge.imgmsg_to_cv2(img, "bgr8")
     img = cv2.resize(img, tuple(size[::-1]))
-    nd_img = nd.array(img).as_in_context(ctx[0])
-    nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0) / 255.
+
+    nd_img = yolo_gluon.cv_img_2_ndarray(img, ctx[0])
 
     score, text = predict(nd_img)
     cv2_show_OCR_result(img, score, text)
@@ -143,9 +144,8 @@ def cv2_show_OCR_result(img, score, text):
     points = np.concatenate((x, y), axis=-1)
     points = np.expand_dims(points, axis=0).astype(np.int32)
 
-    #cv2.polylines(img, points, 0, (255, 0, 0), 2)
+    cv2.polylines(img, points, 0, (255, 0, 0), 2)
     cv2.putText(img, text, (0, 60), 2, 2, (0, 0, 255), 2)
-    print(text)
     # image/text/left-top/font type/size/color/width
     cv2.imshow('img', img)
     cv2.waitKey(1)
@@ -154,19 +154,25 @@ def cv2_show_OCR_result(img, score, text):
 def predict(nd_img):
     score_x, class_x = executor.forward(is_train=False, data=nd_img)
 
-    s = score_x[0]
-    s = nd.sigmoid(s.reshape(-1)).asnumpy()
-    p = class_x[0].asnumpy()
-    p = np.argmax(p, axis=-1)[0]
-    s2 = np.concatenate(([0], s, [0]))
+    score_x = nd.sigmoid(score_x[0].reshape(-1)).asnumpy()
+    class_x = nd.softmax(class_x[0][0], axis=-1).asnumpy()
+
+    #p = np.argmax(class_x, axis=-1)[0]
+
+    score_x2 = np.concatenate(([0], score_x, [0]))
     # zero-dimensional arrays cannot be concatenated
     # Find peaks
     text = ''
     for i in range(24):
-        if s2[i+1] > 0.6 and s2[i+1] > s2[i+2] and s2[i+1] > s2[i]:
-            c = int(p[i])
+        if score_x2[i+1] > 0.6 and \
+           score_x2[i+1] > score_x2[i+2] and score_x2[i+1] > score_x2[i]:
+
+            c = np.argmax(class_x[i])
+            print('\033[1;32m%s\033[0m(%.2f),' % (cls_names[c], np.max(class_x[i])),
+                end='')
             text = text + cls_names[c]
-    return s, text
+    print()
+    return score_x, text
 
 
 os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
@@ -198,16 +204,31 @@ LR = 0.001
 batch_size = 100
 record_step = 1000
 
-area = 24
-score_weight = 0.1
-class_weight = 1.0
-
 num_init_features = 32
 growth_rate = 12
 block_config = [6, 12, 24]
 
+area = size[1] / 2 ** (len(block_config)+1)
+score_weight = 0.1
+class_weight = 1.0
+
 export_file = args.version + '/export/'
-if args.mode != 'video':
+
+if args.mode == 'video':
+    executor = yolo_gluon.init_executor(export_file, size, ctx[0])
+    bridge = CvBridge()
+    rospy.init_node("OCR_node", anonymous=True)
+    pub = rospy.Publisher('YOLO/OCR', String, queue_size=0)
+    rospy.Subscriber('/YOLO/clipped_LP', Image, _image_callback)
+
+    print('Image Topic: /YOLO/clipped_LP')
+    print('checkpoint file: %s' % export_file)
+
+    r = rospy.Rate(30)
+    while not rospy.is_shutdown():
+        r.sleep()
+
+else:
     net = OCRDenseNet(num_init_features, growth_rate, block_config, classes=34)
     backup_dir = os.path.join(args.version, 'backup')
     weight = yolo_gluon.get_latest_weight_from(backup_dir)
@@ -238,7 +259,7 @@ if args.mode == 'train':
     print('OCR Render And Train')
 
     h, w = size
-    bg_iter_train = yolo_gluon.load_background('val', batch_size, h, w)
+    bg_iter_train = yolo_gluon.load_background('train', batch_size, h, w)
     generator = licence_plate_render.LPGenerator(*size)
 
     while True:
@@ -296,33 +317,6 @@ elif args.mode == 'valid':
             print(text)
 
         raw_input('press Enter to next batch....')
-
-elif args.mode == 'video':
-    executor = yolo_gluon.init_executor(export_file, size, ctx[0])
-    bridge = CvBridge()
-    rospy.init_node("OCR_node", anonymous=True)
-    pub = rospy.Publisher('YOLO/OCR', String, queue_size=0)
-    rospy.Subscriber('/YOLO/clipped_LP', Image, _image_callback)
-
-    print('Image Topic: /YOLO/clipped_LP')
-    print('checkpoint file: %s' % export_file)
-
-    '''# test inference rate
-    data = nd.zeros((1, 3, size[0], size[1])).as_in_context(ctx[0])
-    for _ in range(10):
-        x1, x2 = executor.forward(is_train=False, data=data)
-        x1.wait_to_read()
-    t = time.time()
-    for _ in range(100):
-        x1, x2 = executor.forward(is_train=False, data=data)
-        x1.wait_to_read()
-    rate = 100/float(time.time() - t)
-    print(global_variable.yellow)
-    print('Inference Rate = %.2f' % rate)
-    '''
-    r = rospy.Rate(30)
-    while not rospy.is_shutdown():
-        r.sleep()
 
 elif args.mode == 'export':
     shape = (1, 3, size[0], size[1])

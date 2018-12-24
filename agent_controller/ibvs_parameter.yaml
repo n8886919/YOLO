@@ -1,11 +1,19 @@
 {
+  PID_TOPIC: '/ibvs_gui/pid',
+  LAND_TOPIC: '/ibvs_gui/land',
+  FIX_POSE_TOPIC: '/ibvs_gui/fix_pose',
+  CMD_VEL_TOPIC: '/ibvs_gui/cmd_vel',
+
   gain_default: 
     {
-      'xp': 1.0, 'xi': 0.0, 'xd': 0.0,
-      'yp': 0.2, 'yi': 0.0, 'yd': 0.0,
-      'zp': 0.4, 'zi': 0.0, 'zd': 0.0,
-      'wp': 0.8, 'wi': 0.0, 'wd': 0.0},
-
+      #'xp': 1.0, 'xi': 0.0, 'xd': 0.0,
+      #'yp': 0.2, 'yi': 0.0, 'yd': 0.0,
+      #'zp': 0.4, 'zi': 0.0, 'zd': 0.0,
+      #'wp': 0.8, 'wi': 0.0, 'wd': 0.0},
+      'xp': 4.0, 'xi': 0.0, 'xd': 0.0,
+      'yp': 1.0, 'yi': 0.0, 'yd': 0.0,
+      'zp': 1.0, 'zi': 0.0, 'zd': 0.0,
+      'wp': 2.0, 'wi': 0.0, 'wd': 0.0},
   button_place:
     {
       'xp': [0, 0], 'xi': [100, 0], 'xd': [200, 0],

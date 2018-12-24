@@ -364,7 +364,7 @@ class LicencePlateDetectioin():
 
         self.lock = threading.Lock()
         threading.Thread(target=self._net_thread).start()
-        self.mx_resize = mxnet.image.ForceResizeAug(tuple(self.size[::-1]),interp=2)
+
         while not rospy.is_shutdown():
             if not hasattr(self, 'net_out') or \
                not hasattr(self, 'net_img'):
@@ -388,30 +388,30 @@ class LicencePlateDetectioin():
             rate.sleep()
 
     def _net_thread(self):
+        h, w = self.size
+        mx_resize = mxnet.image.ForceResizeAug((w, h), interp=2)
+
         while not rospy.is_shutdown():
             if not hasattr(self, 'img') or self.img is None:
                 print('Wait For Image')
                 time.sleep(1.0)
                 continue
-            #self.lock.acquire()
-            self.net_img = self.img.copy()
-            '''
-            resized_img = cv2.resize(self.net_img, tuple(self.size[::-1]))
-            nd_img = yolo_gluon.cv_img_2_ndarray(resized_img, self.ctx[0])
-            '''
-            nd_img = nd.array(self.net_img)
-            nd_img = self.mx_resize(nd_img).as_in_context(self.ctx[0])
-            nd_img = nd_img.transpose((2, 0, 1)).expand_dims(axis=0) / 255.
-            nd_img = nd.ones((1, 3, 320, 512)).as_in_context(self.ctx[0])
-            self.net_out = self.net.forward(is_train=False, data=nd_img)[0]
-            #self.net_out = self.net.forward(nd_img)
 
-            print(self.net_out)
-            self.net_out.wait_to_read()
+            net_img = self.img.copy()
+
+            nd_img = yolo_gluon.cv_img_2_ndarray(
+                net_img, self.ctx[0], mxnet_resize=mx_resize)
+
+            #nd_img = yolo_gluon.nd_white_balance(nd_img, bgr=[1.0, 1.0, 1.0])
+            net_out = self.net.forward(is_train=False, data=nd_img)[0]
+            # self.net_out = [nd.array((1, 10, 10, 16))]
+
+            net_out[-1].wait_to_read()
+            self.net_img = net_img
+            self.net_out = net_out
 
     def _image_callback(self, img):
-        img = self.bridge.imgmsg_to_cv2(img, "bgr8")
-        self.img = yolo_cv.white_balance(img, bgr=[1.2, 0.8, 1.0])
+        self.img = self.bridge.imgmsg_to_cv2(img, "bgr8")
 
     def _get_frame(self):
         dev = '0'  # self.dev

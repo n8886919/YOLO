@@ -189,10 +189,10 @@ class LPGenerator():
             LP_h = int(LP_h)
             LP = LP.resize((LP_w, LP_h), PIL.Image.BILINEAR)
 
-            LP, r = self.pil_image_enhance(LP, M=.0, N=.0, R=5.0, G=8.0)
+            LP, r = self.pil_image_enhance(LP, M=10.0, N=10.0, R=5.0, G=8.0)
 
-            paste_x = np.random.randint(int(-0.05*LP_w), int(self.w-0.95*LP_w))
-            paste_y = np.random.randint(int(-0.05*LP_h), int(self.h-0.95*LP_h))
+            paste_x = np.random.randint(int(-0.1*LP_w), int(self.w-0.9*LP_w))
+            paste_y = np.random.randint(int(-0.1*LP_h), int(self.h-0.9*LP_h))
 
             tmp = PIL.Image.new('RGBA', (self.w, self.h))
             tmp.paste(LP, (paste_x, paste_y))

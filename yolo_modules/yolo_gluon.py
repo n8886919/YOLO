@@ -10,6 +10,16 @@ from mxnet import nd, gpu
 from yolo_modules import global_variable
 
 
+def nd_white_balance(nd_img, bgr=(1.0, 1.0, 1.0)):
+    assert len(bgr) == 3 and nd_img.shape[1] == 3, (
+        global_variable.red + 'len(bgr) != 3 or nd_img.shape[1] != 3')
+
+    for i, color_weight in enumerate(bgr):
+        nd_img[:, i, :, :] = nd_img[:, i, :, :] * color_weight
+
+    return nd_img
+
+
 def cv_img_2_ndarray(image, ctx, mxnet_resize=None):
     nd_img = nd.array(image)
     if mxnet_resize is not None:
