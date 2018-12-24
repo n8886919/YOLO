@@ -149,11 +149,6 @@ class CarLPNet(basic_yolo.BasicYOLONet):
             x = F.concat(upsample, routes[::-1][i + 1], dim=1)
 
         return all_output[::-1], [LP_output]
-        '''
-        out = [self.merge_and_slice(F, all_output[::-1], self.slice_point)] + \
-            [self.merge_and_slice(F, LP_output, self.LP_slice_point)]
-        return out  # [(score, yx, hw, cls_pred), (score, xy, z, r)]
-        '''
 
 
 if __name__ == '__main__':

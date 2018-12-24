@@ -16,8 +16,8 @@ from yolo_modules import global_variable
 from utils import *
 from render_car import *
 
-os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
-os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
+#os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
+#os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 
 
 def main():
@@ -55,13 +55,12 @@ class YOLO(object):
 
         self._init_syxhw()
 
-        if args.version == 'v2':  # 24 classes, no ele
-            self.spec = spec
-            return
-
-        self.export_file = args.version + '/export/'
-        if args.mode == 'video':
-            self._init_executor()
+        self.export_folder = os.path.join(args.version, 'export')
+        if args.mode == 'video' or args.mode == 'valid':
+            self.net = yolo_gluon.init_executor(
+                self.export_folder,
+                self.size, self.ctx[0],
+                use_tensor_rt=args.tensorrt)
             return
 
         self.version = args.version
@@ -69,9 +68,6 @@ class YOLO(object):
         self._init_net(spec, args.weight)
         if args.mode == 'train':
             self._init_train()
-
-        elif args.mode == 'valid':
-            self._init_executor(use_tensor_rt=args.tensorrt)
 
     # -------------------- Training Part -------------------- #
     def _init_net(self, spec, weight):
@@ -411,7 +407,7 @@ class YOLO(object):
                     bg, 'valid', pascal_rate=pascal_rate)
 
                 x = self.net(imgs)
-                outs, _ = self.predict(x)
+                outs = self.predict(x)
 
                 pred = nd.zeros((self.iou_bs, 4))
                 pred[:, 0] = outs[:, 2] - outs[:, 4] / 2
@@ -448,36 +444,6 @@ class YOLO(object):
             self.net.collect_params().save(path)
 
     # -------------------- Validation Part -------------------- #
-    def _init_executor(self, use_tensor_rt=False):
-        print('checkpoint file: %s' % self.export_file)
-        sym, arg_params, aux_params = mx.model.load_checkpoint(
-            self.export_file, 0)
-
-        if use_tensor_rt:
-            print('Building TensorRT engine')
-            os.environ['MXNET_USE_TENSORRT'] = '1'
-
-            arg_params.update(aux_params)
-            all_params = dict(
-                [(k, v.as_in_context(self.ctx[0]))
-                    for k, v in arg_params.items()])
-
-            self.net = mx.contrib.tensorrt.tensorrt_bind(
-                sym,
-                all_params=all_params,
-                ctx=self.ctx[0],
-                data=(1, 3, self.size[0], self.size[1]),
-                grad_req='null',
-                force_rebind=True)
-
-        else:
-            self.net = sym.simple_bind(
-                ctx=self.ctx[0],
-                data=(1, 3, self.size[0], self.size[1]),
-                grad_req='null',
-                force_rebind=True)
-            self.net.copy_params_from(arg_params, aux_params)
-
     def _init_syxhw(self):
         size = self.size
 
@@ -622,7 +588,7 @@ class YOLO(object):
         yolo_gluon.export(
             self.net,
             (1, 3, self.size[0], self.size[1]),
-            self.export_file,
+            self.export_folder,
             onnx=False, epoch=0)
 
     def _get_loss(self, x, y, s_weight, mask, car_rotate=False):
