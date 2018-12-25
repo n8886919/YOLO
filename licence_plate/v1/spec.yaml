@@ -16,11 +16,7 @@
     ['score', 'xy', 'z', 'r', 'class'],
   scale: 
     {
-      'LP_score': 0.1,
-      'LP_xy': 10.0,
-      'LP_z': 10.0, 
-      'LP_r': 0.1,
-      'LP_class': 0.0},
+      'LP_score': 0.1, 'LP_xy': 10.0, 'LP_z': 10.0, 'LP_r': 0.1, 'LP_class': 0.0},
   exp: 'LP_', 
   pub_clipped_LP: /YOLO/clipped_LP,
   pub_LP: '/YOLO/LP'

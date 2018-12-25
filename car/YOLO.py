@@ -174,7 +174,6 @@ class YOLO(object):
         for pt in points:
             x.append(output.slice_axis(begin=i, end=pt, axis=-1))
             i = pt
-
         return x
 
     # -------------------- Training Main -------------------- #
@@ -189,7 +188,7 @@ class YOLO(object):
         '''
         h, w = self.size
         # -------------------- background -------------------- #
-        self.bg_iter_valid = yolo_gluon.load_background('val', self.iou_bs, h, w)
+        self.bg_iter_valid = yolo_gluon.load_background('val', self.batch_size, h, w)
         self.bg_iter_train = yolo_gluon.load_background('train', self.batch_size, h, w)
 
         self.car_renderer = RenderCar(h, w, self.classes, self.ctx[0], pre_load=True)
@@ -241,10 +240,10 @@ class YOLO(object):
     def _render_thread(self):
         h, w = self.size
         self.car_renderer = RenderCar(
-            h, w, self.classes, self.ctx[0], pre_load=False)
+            h, w, self.classes, self.ctx[0], pre_load=True)
 
         self.bg_iter_valid = yolo_gluon.load_background(
-            'val', self.iou_bs, h, w)
+            'val', self.batch_size, h, w)
 
         bg_iter_train = yolo_gluon.load_background(
             'train', self.batch_size, h, w)
@@ -291,11 +290,10 @@ class YOLO(object):
             for gpu_i in range(len(bxs)):
                 all_gpu_loss.append([])  # new loss list for gpu_i
                 ctx = self.ctx[gpu_i]  # gpu_i = GPU index
-
+                car_by = car_bys[gpu_i]
                 bx = bxs[gpu_i]
                 x = self.net(bx)
 
-                car_by = car_bys[gpu_i]
                 x = self.merge_and_slice(x, self.slice_point)
 
                 with mxnet.autograd.pause():
@@ -409,18 +407,18 @@ class YOLO(object):
                 x = self.net(imgs)
                 outs = self.predict(x)
 
-                pred = nd.zeros((self.iou_bs, 4))
+                pred = nd.zeros((self.batch_size, 4))
                 pred[:, 0] = outs[:, 2] - outs[:, 4] / 2
                 pred[:, 1] = outs[:, 1] - outs[:, 3] / 2
                 pred[:, 2] = outs[:, 2] + outs[:, 4] / 2
                 pred[:, 3] = outs[:, 1] + outs[:, 3] / 2
                 pred = pred.as_in_context(self.ctx[0])
 
-                for i in range(self.iou_bs):
+                for i in range(self.batch_size):
                     label = labels[i, 0, 0:5]
                     iou_sum += yolo_gluon.get_iou(pred[i], label, mode=2)
 
-            mean_iou = iou_sum.asnumpy() / float(self.iou_bs * c)
+            mean_iou = iou_sum.asnumpy() / float(self.batch_size * c)
             self.sw.add_scalar(
                 'Mean_IOU',
                 (self.exp + 'PASCAL %r' % pascal_rate, mean_iou),

@@ -98,7 +98,7 @@ class LPGenerator():
         return LP, LP_type, label
 
     def random_projection_LP_6D(self, LP, in_size, out_size, r_max):
-        Z = np.random.uniform(low=500., high=4000.)
+        Z = np.random.uniform(low=1000., high=4000.)
         X = (Z * 8 / 30.) * np.random.uniform(low=-1, high=1)
         Y = (Z * 6 / 30.) * np.random.uniform(low=-1, high=1)
         r1 = np.random.uniform(low=-1, high=1) * r_max[0] * math.pi / 180.
@@ -119,7 +119,7 @@ class LPGenerator():
             PIL.Image.BILINEAR)
 
         LP = LP.resize((out_size[1], out_size[0]), PIL.Image.BILINEAR)
-        LP, _ = self.pil_image_enhance(LP, G=1.0, noise_var=10.0)
+        LP, _ = self.pil_image_enhance(LP, G=1.0, noise_var=5.0)
 
         mask = yolo_gluon.pil_mask_2_rgb_ndarray(LP.split()[-1])
         image = yolo_gluon.pil_rgb_2_rgb_ndarray(LP, augs=self.augs2)

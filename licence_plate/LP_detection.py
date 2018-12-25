@@ -115,15 +115,13 @@ class LicencePlateDetectioin():
         self.batch_size *= len(self.ctx)
 
         self.num_downsample = len(self.block_config) + 1
-        self.area = int(self.size[0] * self.size[1] / 4**self.num_downsample)
 
         print(global_variable.yellow)
         print('Batch Size = {}'.format(self.batch_size))
         print('Record Step = {}'.format(self.record_step))
-        print('Area = {}'.format(self.area))
 
-        self.L1_loss = mxnet.gluon.loss.L1Loss()
-        self.L2_loss = mxnet.gluon.loss.L2Loss()
+        #self.L1_loss = mxnet.gluon.loss.L1Loss()
+        #self.L2_loss = mxnet.gluon.loss.L2Loss()
         self.HB_loss = mxnet.gluon.loss.HuberLoss()
         self.LG_loss = mxnet.gluon.loss.LogisticLoss(label_format='binary')
         self.CE_loss = mxnet.gluon.loss.SoftmaxCrossEntropyLoss(
@@ -153,6 +151,7 @@ class LicencePlateDetectioin():
         t_X = L[1] / 1000.
         t_Y = L[2] / 1000.
         t_Z = L[3] / 1000.
+
         r1_max = self.LP_r_max[0] * 2 * math.pi / 180.
         r2_max = self.LP_r_max[1] * 2 * math.pi / 180.
         r3_max = self.LP_r_max[2] * 2 * math.pi / 180.

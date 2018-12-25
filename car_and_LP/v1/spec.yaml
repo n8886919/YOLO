@@ -57,7 +57,5 @@
   pub_box: '/YOLO/box',
 
   pub_clipped_LP: '/YOLO/clipped_LP',
-  pub_LP: '/YOLO/LP',
-
-  iou_bs: 30,
+  pub_LP: '/YOLO/LP'
 }
