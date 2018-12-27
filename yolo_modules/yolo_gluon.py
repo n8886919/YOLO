@@ -164,8 +164,8 @@ def init_executor(export_folder, size, ctx, use_tensor_rt=False, step=0):
     return executor
 
 
-def export(net, batch_shape, export_folder, onnx=True, epoch=0):
-    data = nd.zeros(batch_shape).as_in_context(mxnet.gpu(0))
+def export(net, batch_shape, ctx, export_folder, onnx=False, epoch=0):
+    data = nd.zeros(batch_shape).as_in_context(ctx)
     net.forward(data)
 
     print(global_variable.yellow)

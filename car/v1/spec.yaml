@@ -21,7 +21,7 @@
   record_step: 5000,
   valid_step: 1000, 
   batch_size: 30,
-  train_counter_start: 0,
+  train_counter_start: 120000,
   
   loss_name: 
     [

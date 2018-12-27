@@ -273,22 +273,21 @@ class LicencePlateDetectioin():
 
             elif mode == 'val':
                 # batch_out = self.net.forward(is_train=False, data=imgs)
-                imgs = nd.array(0.5*np.ones((1, 3, 320, 512))).as_in_context(self.ctx[0])
                 batch_out = self.net(imgs)
-                print(batch_out)
-                print(batch_out.shape)
                 pred = self.predict_LP(batch_out)
 
                 img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
+
+                labels = labels.asnumpy()
+
+                img, _ = LP_generator.project_rect_6d.add_edges(
+                    img, labels[0, 0, 1:7])
+
                 img, clipped_LP = LP_generator.project_rect_6d.add_edges(
                     img, pred[1:])
 
                 yolo_cv.matplotlib_show_img(ax, img)
 
-                print(nd.concat(
-                    nd.array(pred[:7]).reshape(-1, 1),
-                    labels[0, 0, :7].reshape(-1, 1).as_in_context(cpu(0)),
-                    dim=-1))
                 raw_input('--------------------------------------------------')
 
     def slice_out(self, x):
@@ -309,8 +308,7 @@ class LicencePlateDetectioin():
         out = out.reshape((-1, 10))
         pred = out[best_index].reshape(-1)  # best out
 
-        pred[1:3] *= 1000
-        pred[3] = nd.exp(pred[3]) * 1000
+        pred[1:4] *= 1000
 
         for i in range(3):
             p = (nd.sigmoid(pred[i+4]) - 0.5) * 2 * self.LP_r_max[i]

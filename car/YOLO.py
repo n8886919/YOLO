@@ -509,8 +509,8 @@ class YOLO(object):
             out = out.reshape((-1, 6+self.num_class))
 
             pred = out[best_anchor_index][0]  # best out
-            y = (pred[2] + pred[4])/2
-            x = (pred[1] + pred[3])/2
+            y = (pred[2] + pred[4]) / 2
+            x = (pred[1] + pred[3]) / 2
             h = (pred[4] - pred[2])
             w = (pred[3] - pred[1])
             pred[1:5] = nd.concat(y, x, h, w, dim=-1)
@@ -586,8 +586,8 @@ class YOLO(object):
         yolo_gluon.export(
             self.net,
             (1, 3, self.size[0], self.size[1]),
-            self.export_folder,
-            onnx=False, epoch=0)
+            self.ctx[0],
+            self.export_folder)
 
     def _get_loss(self, x, y, s_weight, mask, car_rotate=False):
         rotate_lr = self.scale['rotate'] if car_rotate else 0

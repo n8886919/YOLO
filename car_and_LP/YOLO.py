@@ -89,6 +89,7 @@ class CarLPNet(basic_yolo.BasicYOLONet):
 class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
     def __init__(self, args):
         car_YOLO.YOLO.__init__(self, args)
+        self.exp = '12-27x01-36_c100_no_CAR'
         pprint(self.classes)
 
     def _init_net(self, spec, weight):
@@ -149,7 +150,6 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
 
         data_out[0] = data_in[0] * 1000
         data_out[1] = data_in[1] * 1000
-        #data_out[2] = nd.exp(data_in[2]) * 1000
         data_out[2] = data_in[2] * 1000
 
         for i in range(3):
@@ -157,13 +157,7 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
             data_out[i+3] = data * math.pi / 180.
 
         return data_out
-    '''
-    def reshape_LP(self, x):
-        bs = x[0].shape[0]
-        h = self.size[0] / 2**self.num_downsample
-        w = self.size[1] / 2**self.num_downsample
-        return [x[0].reshape((bs, h, w, self.LP_slice_point[-1]))]
-    '''
+
     # -------------------- Training Main -------------------- #
     def render_and_train(self):
         print(global_variable.green)
@@ -268,23 +262,23 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
                 car_by = car_bys[gpu_i]
                 LP_by = LP_bys[gpu_i]
 
-                x, LP_x = self.net(bx)
-                # x and LP_x are list, which lenth are 1 and 3
+                x, LP_x = self.net(bx)  # [x, x,x], [x]
                 x = self.merge_and_slice(x, self.slice_point)  # from car_YOLO
-                #LP_x = self.reshape_LP(LP_x)
                 LP_x = self.merge_and_slice(LP_x, self.LP_slice_point)
 
                 with mxnet.autograd.pause():
+                    '''
                     y, mask = self._loss_mask(car_by, gpu_i)
                     s_weight = self._score_weight(mask, ctx)
-
+                    '''
                     LP_y, LP_mask = self._loss_mask_LP(LP_by, gpu_i)
                     LP_s_weight = self._score_weight_LP(LP_mask, ctx)
 
+                '''
                 car_loss = self._get_loss(x, y, s_weight, mask, car_rotate=car_rotate)
-                LP_loss = self._get_loss_LP(LP_x, LP_y, LP_s_weight, LP_mask)
-
                 all_gpu_loss[gpu_i].extend(car_loss)
+                '''
+                LP_loss = self._get_loss_LP(LP_x, LP_y, LP_s_weight, LP_mask)
                 all_gpu_loss[gpu_i].extend(LP_loss)
 
                 sum(all_gpu_loss[gpu_i]).backward()
@@ -355,11 +349,11 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
             img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
 
             outs = self.predict([x1, x2, x3])
-            '''
+
             LP_outs = self.predict_LP([LP_x])
             img, clipped_LP = LP_generator.project_rect_6d.add_edges(
                 img, LP_outs[0, 1:])
-            '''
+
             img = yolo_cv.cv2_add_bbox(img, labels[0, 0].asnumpy(), 4, use_r=0)
             img = yolo_cv.cv2_add_bbox(img, outs[0], 5, use_r=0)
             yolo_cv.matplotlib_show_img(ax1, img)
@@ -371,8 +365,8 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
         yolo_gluon.export(
             self.net,
             (1, 3, self.size[0], self.size[1]),
-            self.export_folder,
-            onnx=False, epoch=0)
+            self.ctx[0],
+            self.export_folder)
 
 
 '''

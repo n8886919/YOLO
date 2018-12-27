@@ -5,7 +5,10 @@ import os
 import sys
 
 import rospy
-from std_msgs.msg import Float32MultiArray, MultiArrayDimension
+from std_msgs.msg import Float32
+from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import MultiArrayDimension
+
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 
@@ -20,15 +23,6 @@ from yolo_modules import global_variable
 
 import utils
 from YOLO import *
-'''
-if sys.argv[1] == 'v2':
-    print(global_variable.cyan)
-    print('load car_and_LP v2')
-    from car.YOLO import *
-
-else:
-    from YOLO import *
-'''
 
 
 def main():
@@ -42,7 +36,6 @@ class Video():
         self.yolo = YOLO(args)
 
         self.car_threshold = 0.2  # 0.9
-        self.LP_threshold = 0.7  # 0.9
 
         self.project_rect_6d = licence_plate_render.ProjectRectangle6D(
             int(380*1.1), int(160*1.1))
@@ -52,7 +45,6 @@ class Video():
         self.topic = args.topic
         self.show = args.show
         self.radar = args.radar
-        self.LP = args.LP
         self.car = args.car
         self.flip = args.flip
         self.clip = (args.clip_h, args.clip_w)
@@ -64,7 +56,10 @@ class Video():
 
         print(global_variable.cyan)
         if self.dev == 'ros':
+            depth_topic = '/zed/depth/depth_registered'
+            rospy.Subscriber(depth_topic, Image, self._depth_callback)
             rospy.Subscriber(self.topic, Image, self._image_callback)
+
             print('Image Topic: %s' % self.topic)
 
         else:
@@ -72,14 +67,22 @@ class Video():
 
         threading.Thread(target=self._net_thread).start()
 
-        save_frame = False
+        save_frame = True
         if save_frame:
+            '''
             fourcc = cv2.VideoWriter_fourcc(*'MP4V')  # (*'MJPG')#(*'MPEG')
             self.out = cv2.VideoWriter(
                 './video/car_rotate.mp4', fourcc, 30, (640, 360))
+            '''
+            start_time = datetime.datetime.now().strftime("%m-%dx%H-%M")
+            out_file = os.path.join('video', 'car_%s.avi' % start_time)
+
+            fourcc = cv2.VideoWriter_fourcc(*'MJPG')  # (*'MJPG')#(*'MPEG')
+            self.out = cv2.VideoWriter(
+                out_file, fourcc, 30, (960, 720))
 
     def __call__(self):
-        shape = (1, 3, self.yolo.size[0], self.yolo.size[1])
+        #shape = (1, 3, self.yolo.size[0], self.yolo.size[1])
         #yolo_gluon.test_inference_rate(self.yolo.net, shape)
 
         while not hasattr(self, 'net_out') or not hasattr(self, 'net_img'):
@@ -87,12 +90,23 @@ class Video():
 
         rate = rospy.Rate(30)
         while not rospy.is_shutdown():
+            net_dep = copy.copy(self.net_dep)
             net_out = copy.copy(self.net_out)  # not sure type(net_out)
             img = copy.copy(self.net_img)
 
-            pred = self.yolo.predict(net_out[:3], [net_out[-1]])
-            ros_publish_array(self.car_pub, self.mat1, pred[0][0])
-            ros_publish_array(self.LP_pub, self.mat2, pred[1][0])
+            pred = self.yolo.predict(net_out[:3])
+            if hasattr(self, 'net_dep'):
+                x = int(net_dep.shape[1] * pred[0, 2])
+                y = int(net_dep.shape[0] * pred[0, 1])
+                pred[0, 5] = net_dep[y, x]
+            else:
+                pred[0, 5] = -1
+
+            ros_publish_array(self.car_pub, self.mat_car, pred[0])
+
+            now = rospy.get_rostime()
+            print((now - self.net_img_time).to_sec())
+
             self.visualize(pred, img)
             rate.sleep()
 
@@ -101,19 +115,15 @@ class Video():
         self.bridge = CvBridge()
 
         self.img_pub = rospy.Publisher(self.yolo.pub_img, Image, queue_size=1)
-        self.clipped_LP_pub = rospy.Publisher(
-            self.yolo.pub_clipped_LP, Image, queue_size=1)
 
         self.car_pub = rospy.Publisher(
             self.yolo.pub_box, Float32MultiArray, queue_size=1)
 
-        self.LP_pub = rospy.Publisher(
-            self.yolo.pub_LP, Float32MultiArray, queue_size=1)
-
         self.topk = 1
 
-        self.mat1 = Float32MultiArray()
-        dim = self.mat1.layout.dim
+        self.mat_car = Float32MultiArray()
+        '''
+        dim = self.mat_car.layout.dim
         dim.append(MultiArrayDimension())
         dim.append(MultiArrayDimension())
         dim[0].label = "box"
@@ -123,18 +133,7 @@ class Video():
         dim[1].label = "predict"
         dim[1].size = 7
         dim[1].stride = 7
-
-        self.mat2 = Float32MultiArray()
-        dim = self.mat2.layout.dim
-        dim.append(MultiArrayDimension())
-        dim.append(MultiArrayDimension())
-        dim[0].label = "LP"
-        dim[0].size = self.topk
-        dim[0].stride = self.topk * 8
-
-        dim[1].label = "predict"
-        dim[1].size = 8
-        dim[1].stride = 8
+        '''
 
     def _get_frame(self):
         dev = self.dev
@@ -159,20 +158,12 @@ class Video():
                    '(video_path) or (device_index)'))
             sys.exit(0)
 
+        size = tuple(self.yolo.size[::-1])
+        mx_resize = mxnet.image.ForceResizeAug(size)
         while not rospy.is_shutdown():
             self.ret, img = cap.read()
             self.img = yolo_cv.cv2_flip_and_clip_frame(img, self.clip, self.flip)
-
-            if bool(pause):
-                time.sleep(pause)
-
-        cap.release()
-
-    def _net_thread(self):
-        size = tuple(self.yolo.size[::-1])
-        mx_resize = mxnet.image.ForceResizeAug(size)
-
-        while not rospy.is_shutdown():
+            '''
             if not hasattr(self, 'img') or self.img is None:
                 print('Wait For Image')
                 time.sleep(1.0)
@@ -186,46 +177,80 @@ class Video():
             nd_img = yolo_gluon.nd_white_balance(nd_img, bgr=[1.0, 1.0, 1.0])
 
             net_out = self.yolo.net.forward(is_train=False, data=nd_img)
-            # self.net_out = [x1, x2, x3, LP_x]
-            net_out[-1].wait_to_read()
+
+            img = copy.copy(net_img)
+
+            pred = self.yolo.predict(net_out[:3])
+            ros_publish_array(self.car_pub, self.mat_car, pred[0][0])
+            self.visualize(pred, img)
+            '''
+            #self.out.write(img)
+            #if bool(pause):
+                #time.sleep(pause)
+
+        cap.release()
+
+    def _net_thread(self):
+        size = tuple(self.yolo.size[::-1])
+        mx_resize = mxnet.image.ForceResizeAug(size)
+
+        while not rospy.is_shutdown():
+            if not hasattr(self, 'img') or self.img is None:
+                print('Wait For Image')
+                time.sleep(1.0)
+                continue
+            if hasattr(self, 'depth_image'):
+                net_dep = self.depth_image.copy()
+
+            net_img_time = self.img_time
+            net_img = self.img.copy()
+
+            nd_img = yolo_gluon.cv_img_2_ndarray(net_img, self.ctx[0], mxnet_resize=mx_resize)
+            # nd_img = yolo_gluon.nd_white_balance(nd_img, bgr=[1.0, 1.0, 1.0])
+
+            net_out = self.yolo.net.forward(is_train=False, data=nd_img)  # [x1, x2, x3]
+            net_out[0].wait_to_read()
+
+            if hasattr(self, 'depth_image'):
+                self.net_dep = net_dep
+
+            self.net_img_time = net_img_time
             self.net_img = net_img
             self.net_out = net_out
 
     def _image_callback(self, img):
+        self.img_time = img.header.stamp  # .secs + img.header.stamp.nsecs * 10**-6
         img = self.bridge.imgmsg_to_cv2(img, "bgr8")
+
         self.img = yolo_cv.cv2_flip_and_clip_frame(img, self.clip, self.flip)
 
+    def _depth_callback(self, depth_msgs):
+        depth_image = self.bridge.imgmsg_to_cv2(depth_msgs, "32FC1")
+        depth_image = np.array(depth_image, dtype=np.float32)
+        self.depth_image = yolo_cv.cv2_flip_and_clip_frame(
+            depth_image, self.clip, self.flip)
+
     def visualize(self, pred, img):
-        Cout = pred[0][0]
-        LP_out = pred[1][0]
+        Cout = pred[0]
         #self.out.write(img)
 
         if self.radar:
             self.radar_prob.plot3d(
                 Cout[0], Cout[-self.yolo.num_class:])
 
-        # -------------------- Licence Plate -------------------- #
-        if LP_out[0] > self.LP_threshold and self.LP:
-            img, clipped_LP = self.project_rect_6d.add_edges(img, LP_out[1:])
-            self.clipped_LP_pub.publish(
-                self.bridge.cv2_to_imgmsg(clipped_LP, 'bgr8'))
-
-            if self.show:
-                cv2.imshow('Licence Plate', clipped_LP)
 
         # -------------------- vehicle -------------------- #
         if Cout[0] > self.car_threshold and self.car:
             yolo_cv.cv2_add_bbox(img, Cout, 4, use_r=False)
-
         if self.show:
             cv2.imshow('img', img)
             cv2.waitKey(1)
-
+            
         self.img_pub.publish(self.bridge.cv2_to_imgmsg(img, 'bgr8'))
 
 
 def ros_publish_array(ros_publisher, mat, data):
-    # self.mat1.data = [-1] * 7
+    # self.mat_car.data = [-1] * 7
     # self.mat2.data = [-1] * 8
     mat.data = data
     ros_publisher.publish(mat)

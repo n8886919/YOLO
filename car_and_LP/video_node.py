@@ -90,10 +90,11 @@ class Video():
             net_out = copy.copy(self.net_out)  # not sure type(net_out)
             img = copy.copy(self.net_img)
 
-            pred = self.yolo.predict(net_out[:3], [net_out[-1]])
-            ros_publish_array(self.car_pub, self.mat1, pred[0][0])
-            ros_publish_array(self.LP_pub, self.mat2, pred[1][0])
-            self.visualize(pred, img)
+            pred_car = self.yolo.predict(net_out[:3])
+            pred_LP = self.yolo.predict_LP([net_out[-1]])
+            ros_publish_array(self.car_pub, self.mat1, pred_car[0])
+            ros_publish_array(self.LP_pub, self.mat2, pred_LP[0])
+            self.visualize([pred_car, pred_LP], img)
             rate.sleep()
 
     def _init_ros(self):

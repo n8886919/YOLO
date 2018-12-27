@@ -1,5 +1,6 @@
-from __future__ import print_function
+
 import threading
+import time
 import Tkinter as tk
 import math
 import numpy as np
@@ -11,6 +12,9 @@ from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float32MultiArray
 from std_msgs.msg import MultiArrayDimension
 from std_msgs.msg import Bool
+from sensor_msgs.msg import Image
+
+from cv_bridge import CvBridge, CvBridgeError
 
 from yolo_modules import global_variable
 
@@ -130,10 +134,14 @@ class IBVS_Controller():
         rospy.init_node("IBVS_controller_node", anonymous=True)
 
         self.t0 = rospy.get_rostime()
-        self.heading = 0
         rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self._pose_callback)
-        rospy.sleep(1)  # ???
+        self.heading = 0
+        while not hasattr(self, 'heading'):
+            time.sleep(1)
+        #rospy.sleep(1)  # wait for local pose
         rospy.Subscriber('/YOLO/box', Float32MultiArray, self._vel_callback)
+
+        self.bridge = CvBridge()
 
         self.ibvs_vel_pub = rospy.Publisher(
             IBVS_PARAMETER['CMD_VEL_TOPIC'],
@@ -233,8 +241,9 @@ class IBVS_Controller():
 
             err_now = {
                 #'y': (box[6] - math.pi) if box[6] > 0 else (box[6] + math.pi),
+                #'x': 0.18 - box[3] * box[4],
                 'y': erry,
-                'x': 0.18 - box[3] * box[4],
+                'x': 2.0 - box[5],
                 'z': 0.7 - box[1],
                 'w': 0.5 - box[2]
             }
