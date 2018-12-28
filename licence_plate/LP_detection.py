@@ -144,21 +144,24 @@ class LicencePlateDetectioin():
             os.makedirs(self.backup_dir)
 
     def _find_best_LP(self, L, gpu_index):
+        step = 2**self.num_downsample
+        h_feature_max = self.size[0] / 2**self.num_downsample - 1
+        w_feature_max = self.size[1] / 2**self.num_downsample - 1
 
-        w_feature = np.clip(int(L[7].asnumpy()/32), 0, 31)
-        h_feature = np.clip(int(L[8].asnumpy()/32), 0, 19)
+        h_feature = np.clip(int(L[8].asnumpy()/step), 0, h_feature_max)
+        w_feature = np.clip(int(L[7].asnumpy()/step), 0, w_feature_max)
 
         t_X = L[1] / 1000.
         t_Y = L[2] / 1000.
         t_Z = L[3] / 1000.
 
-        r1_max = self.LP_r_max[0] * 2 * math.pi / 180.
-        r2_max = self.LP_r_max[1] * 2 * math.pi / 180.
-        r3_max = self.LP_r_max[2] * 2 * math.pi / 180.
+        r1_max = self.LP_r_max[0] * math.pi / 180.
+        r2_max = self.LP_r_max[1] * math.pi / 180.
+        r3_max = self.LP_r_max[2] * math.pi / 180.  # 2 * theta (rad)
 
-        t_r1 = yolo_gluon.nd_inv_sigmoid(L[4] / r1_max + 0.5)
-        t_r2 = yolo_gluon.nd_inv_sigmoid(L[5] / r2_max + 0.5)
-        t_r3 = yolo_gluon.nd_inv_sigmoid(L[6] / r3_max + 0.5)
+        t_r1 = yolo_gluon.nd_inv_sigmoid(L[4] / r1_max / 2. + 0.5)
+        t_r2 = yolo_gluon.nd_inv_sigmoid(L[5] / r2_max / 2. + 0.5)
+        t_r3 = yolo_gluon.nd_inv_sigmoid(L[6] / r3_max / 2. + 0.5)
 
         label = nd.concat(t_X, t_Y, t_Z, t_r1, t_r2, t_r3, dim=-1)
         return (h_feature, w_feature), label

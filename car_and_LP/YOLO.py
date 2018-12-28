@@ -51,8 +51,9 @@ class CarLPNet(basic_yolo.BasicYOLONet):
 
         self.LP_branch = mxnet.gluon.nn.HybridSequential()
         self.LP_branch.add(YOLODetectionBlockV3(LP_channel, num_sync_bn_devices))
+        self.LP_branch.add(YOLODetectionBlockV3(LP_channel, num_sync_bn_devices))
+        self.LP_branch.add(YOLODetectionBlockV3(LP_channel, num_sync_bn_devices))
         self.LP_branch.add(gluon.nn.Conv2D(LP_slice_point[-1], kernel_size=1))
-        #self.LP_branch.add(basic_yolo.YOLOOutput(self.LP_slice_point[-1], 1))
 
     def hybrid_forward(self, F, x, *args):
         routes = []
@@ -67,7 +68,9 @@ class CarLPNet(basic_yolo.BasicYOLONet):
         for i, block, output in zip(range(len(routes)), self.yolo_blocks, self.yolo_outputs):
             if i >= len(routes) - 1:
                 _, LP_output = self.LP_branch[0](x)
-                LP_output = self.LP_branch[1](LP_output)
+                _, LP_output = self.LP_branch[1](LP_output)
+                _, LP_output = self.LP_branch[2](LP_output)
+                LP_output = self.LP_branch[3](LP_output)
                 LP_output = LP_output.transpose((0, 2, 3, 1))
                 end = True
 
@@ -89,7 +92,6 @@ class CarLPNet(basic_yolo.BasicYOLONet):
 class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
     def __init__(self, args):
         car_YOLO.YOLO.__init__(self, args)
-        self.exp = '12-27x01-36_c100_no_CAR'
         pprint(self.classes)
 
     def _init_net(self, spec, weight):
@@ -151,7 +153,6 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
         data_out[0] = data_in[0] * 1000
         data_out[1] = data_in[1] * 1000
         data_out[2] = data_in[2] * 1000
-
         for i in range(3):
             data = (nd.sigmoid(data_in[i+3]) - 0.5) * 2 * self.LP_r_max[i]
             data_out[i+3] = data * math.pi / 180.
@@ -262,22 +263,21 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
                 car_by = car_bys[gpu_i]
                 LP_by = LP_bys[gpu_i]
 
-                x, LP_x = self.net(bx)  # [x, x,x], [x]
+                x, LP_x = self.net(bx)  # [x, x, x], [x]
                 x = self.merge_and_slice(x, self.slice_point)  # from car_YOLO
                 LP_x = self.merge_and_slice(LP_x, self.LP_slice_point)
 
                 with mxnet.autograd.pause():
-                    '''
+
                     y, mask = self._loss_mask(car_by, gpu_i)
                     s_weight = self._score_weight(mask, ctx)
-                    '''
+
                     LP_y, LP_mask = self._loss_mask_LP(LP_by, gpu_i)
                     LP_s_weight = self._score_weight_LP(LP_mask, ctx)
 
-                '''
                 car_loss = self._get_loss(x, y, s_weight, mask, car_rotate=car_rotate)
                 all_gpu_loss[gpu_i].extend(car_loss)
-                '''
+
                 LP_loss = self._get_loss_LP(LP_x, LP_y, LP_s_weight, LP_mask)
                 all_gpu_loss[gpu_i].extend(LP_loss)
 

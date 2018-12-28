@@ -21,7 +21,7 @@
   record_step: 5000,
   valid_step: 1000,
   batch_size: 30,
-  train_counter_start: 20000,
+  train_counter_start: 0,
   
   loss_name: 
     [
@@ -34,7 +34,7 @@
   learning_rate: 0.001,
   positive_weight: 1.0,
   negative_weight: 0.1,
-  dataset: 'c100_no_CAR',
+  dataset: 'c200_ALL',
 
   ############ Licence Plate ############
   LP_slice_point: [1, 3, 4, 7, 10],
