@@ -190,6 +190,32 @@ def export(net, batch_shape, ctx, export_folder, onnx=False, epoch=0):
     print('Export Done')
 
 
+def export_FP16(net, batch_shape, ctx, export_folder, onnx=False, epoch=0):
+    data = nd.zeros(batch_shape).as_in_context(ctx).astype('float16')
+    net.forward(data)
+
+    print(global_variable.yellow)
+    print('export model to: %s' % export_folder)
+    if not os.path.exists(export_folder):
+        os.makedirs(export_folder)
+    net.export(export_folder + '/export', epoch=epoch)
+
+    if onnx:
+        path = os.path.join(export_folder, 'onnx')
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        onnx_file = os.path.join(path, 'out.onnx')
+        print('export onnx to: %s' % onnx_file)
+        sym = export_folder + '/export-symbol.json'
+        params = export_folder + '/export-%04d.params' % epoch
+        mxnet.contrib.onnx.export_model(
+            sym, params, [batch_shape], numpy.float32, onnx_file)
+
+    print(global_variable.green)
+    print('Export Done')
+
+
 def get_latest_weight_from(path):
     backup_list = glob.glob(path + '/*')
     if len(backup_list) != 0:

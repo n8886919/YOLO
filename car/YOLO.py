@@ -85,6 +85,7 @@ class YOLO(object):
             weight = yolo_gluon.get_latest_weight_from(self.backup_dir)
 
         yolo_gluon.init_NN(self.net, weight, self.ctx)
+        self.net.cast('float16')
 
     def _init_train(self):
         self.exp = datetime.datetime.now().strftime("%m-%dx%H-%M")
@@ -121,7 +122,7 @@ class YOLO(object):
         optimizer = mx.optimizer.create(
             'adam',
             learning_rate=self.learning_rate,
-            multi_precision=False)
+            multi_precision=True)
 
         self.trainer = gluon.Trainer(
             self.net.collect_params(),
@@ -240,7 +241,7 @@ class YOLO(object):
     def _render_thread(self):
         h, w = self.size
         self.car_renderer = RenderCar(
-            h, w, self.classes, self.ctx[0], pre_load=True)
+            h, w, self.classes, self.ctx[0], pre_load=False)
 
         self.bg_iter_valid = yolo_gluon.load_background(
             'val', self.batch_size, h, w)
@@ -292,6 +293,7 @@ class YOLO(object):
                 ctx = self.ctx[gpu_i]  # gpu_i = GPU index
                 car_by = car_bys[gpu_i]
                 bx = bxs[gpu_i]
+                bx = bx.astype('float16', copy=False)
                 x = self.net(bx)
 
                 x = self.merge_and_slice(x, self.slice_point)
@@ -299,6 +301,9 @@ class YOLO(object):
                 with mxnet.autograd.pause():
                     y, mask = self._loss_mask(car_by, gpu_i)
                     s_weight = self._score_weight(mask, ctx)
+
+                y = f32_2_f16(y)
+                s_weight, mask = f32_2_f16([s_weight, mask])
 
                 car_loss = self._get_loss(
                     x, y, s_weight, mask, car_rotate=car_rotate)
@@ -583,7 +588,7 @@ class YOLO(object):
             raw_input('next')
 
     def export(self):
-        yolo_gluon.export(
+        yolo_gluon.export_FP16(
             self.net,
             (1, 3, self.size[0], self.size[1]),
             self.ctx[0],
@@ -597,6 +602,15 @@ class YOLO(object):
         r = self.HB_loss(x[3], y[3], mask * rotate_lr)  # L1
         c = self.CE_loss(x[4], y[4], mask * self.scale['class'])
         return (s, yx, hw, r, c)
+
+
+def f32_2_f16(x):
+    for i, data in enumerate(x):
+        assert type(data) == mx.ndarray.ndarray.NDArray, (
+            'list  element should be mxnet.ndarray')
+        x[i] = x[i].astype('float16')
+    return x
+
 
 
 '''
