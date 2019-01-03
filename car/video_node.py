@@ -85,8 +85,8 @@ class Video(object):
             self.save_video = False
 
     def __call__(self):
-        #shape = (1, 3, self.yolo.size[0], self.yolo.size[1])
-        #yolo_gluon.test_inference_rate(self.yolo.net, shape)
+        shape = (1, 3, self.yolo.size[0], self.yolo.size[1])
+        yolo_gluon.test_inference_rate(self.yolo.net, shape, cycles=100)
 
         while not hasattr(self, 'net_out') or not hasattr(self, 'net_img'):
             time.sleep(0.1)
@@ -161,6 +161,7 @@ class Video(object):
             net_img = self.img.copy()
 
             nd_img = yolo_gluon.cv_img_2_ndarray(net_img, self.ctx[0], mxnet_resize=mx_resize)
+            nd_img = nd_img.astype('float16')
             # nd_img = yolo_gluon.nd_white_balance(nd_img, bgr=[1.0, 1.0, 1.0])
 
             net_out = self.yolo.net.forward(is_train=False, data=nd_img)

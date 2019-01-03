@@ -60,7 +60,8 @@ class YOLO(object):
             self.net = yolo_gluon.init_executor(
                 self.export_folder,
                 self.size, self.ctx[0],
-                use_tensor_rt=args.tensorrt)
+                use_tensor_rt=args.tensorrt,
+                fp16=True)
             return
 
         self.version = args.version
@@ -173,7 +174,9 @@ class YOLO(object):
         i = 0
         x = []
         for pt in points:
-            x.append(output.slice_axis(begin=i, end=pt, axis=-1))
+            y = output.slice_axis(begin=i, end=pt, axis=-1)
+            y = y.astype('float32')
+            x.append(y)
             i = pt
         return x
 
@@ -302,8 +305,8 @@ class YOLO(object):
                     y, mask = self._loss_mask(car_by, gpu_i)
                     s_weight = self._score_weight(mask, ctx)
 
-                y = f32_2_f16(y)
-                s_weight, mask = f32_2_f16([s_weight, mask])
+                y = fp32_2_fp16(y)
+                s_weight, mask = fp32_2_fp16([s_weight, mask])
 
                 car_loss = self._get_loss(
                     x, y, s_weight, mask, car_rotate=car_rotate)
@@ -588,11 +591,11 @@ class YOLO(object):
             raw_input('next')
 
     def export(self):
-        yolo_gluon.export_FP16(
+        yolo_gluon.export(
             self.net,
             (1, 3, self.size[0], self.size[1]),
             self.ctx[0],
-            self.export_folder)
+            self.export_folder, fp16=True)
 
     def _get_loss(self, x, y, s_weight, mask, car_rotate=False):
         rotate_lr = self.scale['rotate'] if car_rotate else 0
@@ -604,7 +607,7 @@ class YOLO(object):
         return (s, yx, hw, r, c)
 
 
-def f32_2_f16(x):
+def fp32_2_fp16(x):
     for i, data in enumerate(x):
         assert type(data) == mx.ndarray.ndarray.NDArray, (
             'list  element should be mxnet.ndarray')

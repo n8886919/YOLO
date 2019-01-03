@@ -3,6 +3,7 @@ import numpy
 import os
 import time
 import PIL
+import numpy
 
 import mxnet
 from mxnet import nd, gpu
@@ -130,12 +131,17 @@ def init_NN(target, weight, ctx):
         target.hybridize()
 
 
-def init_executor(export_folder, size, ctx, use_tensor_rt=False, step=0):
+def init_executor(export_folder, size, ctx, use_tensor_rt=False, step=0, fp16=False):
     print('checkpoint folder: %s' % export_folder)
     export_file = os.path.join(export_folder, 'export')
     sym, arg_params, aux_params = mxnet.model.load_checkpoint(
         export_file, step)
     shape = (1, 3, size[0], size[1])
+
+    if fp16:
+        type_dict = {'data': numpy.float16}
+    else:
+        type_dict = {'data': numpy.float32}
 
     if use_tensor_rt:
         print('Building TensorRT engine')
@@ -150,6 +156,7 @@ def init_executor(export_folder, size, ctx, use_tensor_rt=False, step=0):
             all_params=all_params,
             ctx=ctx,
             data=shape,
+            type_dict=type_dict,
             grad_req='null',
             force_rebind=True)
 
@@ -157,6 +164,7 @@ def init_executor(export_folder, size, ctx, use_tensor_rt=False, step=0):
         executor = sym.simple_bind(
             ctx=ctx,
             data=shape,
+            type_dict=type_dict,
             grad_req='null',
             force_rebind=True)
         executor.copy_params_from(arg_params, aux_params)
@@ -164,34 +172,12 @@ def init_executor(export_folder, size, ctx, use_tensor_rt=False, step=0):
     return executor
 
 
-def export(net, batch_shape, ctx, export_folder, onnx=False, epoch=0):
+def export(net, batch_shape, ctx, export_folder, onnx=False, epoch=0, fp16=False):
     data = nd.zeros(batch_shape).as_in_context(ctx)
-    net.forward(data)
 
-    print(global_variable.yellow)
-    print('export model to: %s' % export_folder)
-    if not os.path.exists(export_folder):
-        os.makedirs(export_folder)
-    net.export(export_folder + '/export', epoch=epoch)
+    if fp16:
+        data = data.astype('float16')
 
-    if onnx:
-        path = os.path.join(export_folder, 'onnx')
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-        onnx_file = os.path.join(path, 'out.onnx')
-        print('export onnx to: %s' % onnx_file)
-        sym = export_folder + '/export-symbol.json'
-        params = export_folder + '/export-%04d.params' % epoch
-        mxnet.contrib.onnx.export_model(
-            sym, params, [batch_shape], numpy.float32, onnx_file)
-
-    print(global_variable.green)
-    print('Export Done')
-
-
-def export_FP16(net, batch_shape, ctx, export_folder, onnx=False, epoch=0):
-    data = nd.zeros(batch_shape).as_in_context(ctx).astype('float16')
     net.forward(data)
 
     print(global_variable.yellow)
