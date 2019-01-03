@@ -106,8 +106,9 @@ class Video(object):
                 pred_car[0, 5] = -1
 
             self.ros_publish_array(self.car_pub, self.mat_car, pred_car[0])
+
             now = rospy.get_rostime()
-            print((now - self.net_img_time).to_sec())
+            print(('zed to pub: ', (now - self.net_img_time).to_sec()))
 
             self.visualize(pred_car, img)
             rate.sleep()
@@ -165,13 +166,13 @@ class Video(object):
             net_out = self.yolo.net.forward(is_train=False, data=nd_img)
             # [x1, x2, x3]
             net_out[0].wait_to_read()
+            '''
             # ----------------------
-
-            #now = rospy.get_rostime()
-            #print(('net time', (now - net_img_time).to_sec()))
-
+            now = rospy.get_rostime()
+            print(('net time', (now - net_img_time).to_sec()))
             # ----------------------
-            if hasattr(self, 'depth_image'):
+            '''
+            if 'net_dep' in locals():
                 self.net_dep = net_dep
 
             self.net_img_time = net_img_time

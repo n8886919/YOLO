@@ -30,8 +30,8 @@ class CarLPVideo(Video):
         self.project_rect_6d = licence_plate_render.ProjectRectangle6D(
             int(380*1.1), int(160*1.1))
 
-        self.car_threshold = 0.1
-        self.LP_threshold = 0.1
+        self.car_threshold = 0.5
+        self.LP_threshold = 0.5
 
         self._init(args, save_video_size)
         self.LP_pub = rospy.Publisher(self.yolo.pub_LP, Float32MultiArray, queue_size=1)
@@ -47,12 +47,16 @@ class CarLPVideo(Video):
 
         rate = rospy.Rate(30)
         while not rospy.is_shutdown():
-            net_dep = copy.copy(self.net_dep)
+
+            if hasattr(self, 'net_dep'):
+                net_dep = copy.copy(self.net_dep)
+
             net_out = copy.copy(self.net_out)  # not sure type(net_out)
             img = copy.copy(self.net_img)
 
             pred_car = self.yolo.predict(net_out[:3])
-            if hasattr(self, 'net_dep'):
+
+            if 'net_dep' in locals():
                 x = int(net_dep.shape[1] * pred_car[0, 2])
                 y = int(net_dep.shape[0] * pred_car[0, 1])
                 pred_car[0, 5] = net_dep[y, x]
@@ -64,7 +68,7 @@ class CarLPVideo(Video):
             self.ros_publish_array(self.car_pub, self.mat_car, pred_car[0])
 
             now = rospy.get_rostime()
-            print((now - self.net_img_time).to_sec())
+            print(('zed to pub: ', (now - self.net_img_time).to_sec()))
 
             self.visualize_carlp(pred_car, pred_LP, img)
             rate.sleep()
