@@ -34,7 +34,7 @@ def main():
 class Video(object):
     def __init__(self, args, save_video_size=None):
         self.yolo = YOLO(args)
-        self.car_threshold = 0.9
+        self.car_threshold = 0.7
         self._init(args, save_video_size)
 
     def _init(self, args, save_video_size):
@@ -93,7 +93,8 @@ class Video(object):
 
         rate = rospy.Rate(30)
         while not rospy.is_shutdown():
-            net_dep = copy.copy(self.net_dep)
+            if hasattr(self, 'net_dep'):
+                net_dep = copy.copy(self.net_dep)
             net_out = copy.copy(self.net_out)  # not sure type(net_out)
             img = copy.copy(self.net_img)
 
@@ -161,6 +162,8 @@ class Video(object):
 
             if hasattr(self, 'img_time'):
                 net_img_time = self.img_time
+                now = rospy.get_rostime()
+                print(('zed to net: ', (now - net_img_time).to_sec()))
 
             # -------------------- image -------------------- #
             net_img = self.img.copy()
