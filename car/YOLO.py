@@ -61,14 +61,15 @@ class YOLO(object):
                 self.export_folder,
                 self.size, self.ctx[0],
                 use_tensor_rt=args.tensorrt,
-                fp16=True)
-            return
+                fp16=False)
 
-        self.version = args.version
-        self.record = args.record
-        self._init_net(spec, args.weight)
-        if args.mode == 'train':
-            self._init_train()
+        elif args.mode == 'export' or args.mode == 'train':
+            self.version = args.version
+            self.record = args.record
+            self._init_net(spec, args.weight)
+
+            if args.mode == 'train':
+                self._init_train()
 
     # -------------------- Training Part -------------------- #
     def _init_net(self, spec, weight):
@@ -76,6 +77,7 @@ class YOLO(object):
         # because No conversion function for contrib_SyncBatchNorm yet.
         # (ONNX)
         self.net = CarNet(spec, num_sync_bn_devices=-1)
+        # self.net.cast('float16')
         #self.backup_dir = os.path.join(self.version, 'backup')
         self.backup_dir = os.path.join(
             '/media/nolan/SSD1/YOLO_backup/car',
@@ -86,7 +88,6 @@ class YOLO(object):
             weight = yolo_gluon.get_latest_weight_from(self.backup_dir)
 
         yolo_gluon.init_NN(self.net, weight, self.ctx)
-        self.net.cast('float16')
 
     def _init_train(self):
         self.exp = datetime.datetime.now().strftime("%m-%dx%H-%M")
@@ -175,7 +176,6 @@ class YOLO(object):
         x = []
         for pt in points:
             y = output.slice_axis(begin=i, end=pt, axis=-1)
-            y = y.astype('float32')
             x.append(y)
             i = pt
         return x
@@ -244,7 +244,7 @@ class YOLO(object):
     def _render_thread(self):
         h, w = self.size
         self.car_renderer = RenderCar(
-            h, w, self.classes, self.ctx[0], pre_load=False)
+            h, w, self.classes, self.ctx[0], pre_load=True)
 
         self.bg_iter_valid = yolo_gluon.load_background(
             'val', self.batch_size, h, w)
@@ -295,18 +295,17 @@ class YOLO(object):
                 all_gpu_loss.append([])  # new loss list for gpu_i
                 ctx = self.ctx[gpu_i]  # gpu_i = GPU index
                 car_by = car_bys[gpu_i]
-                bx = bxs[gpu_i]
-                bx = bx.astype('float16', copy=False)
-                x = self.net(bx)
+                bx = bxs[gpu_i]  # .astype('float16', copy=False)
 
+                x = self.net(bx)
                 x = self.merge_and_slice(x, self.slice_point)
 
                 with mxnet.autograd.pause():
                     y, mask = self._loss_mask(car_by, gpu_i)
                     s_weight = self._score_weight(mask, ctx)
 
-                y = fp32_2_fp16(y)
-                s_weight, mask = fp32_2_fp16([s_weight, mask])
+                    # y = self.fp32_2_fp16(y)
+                    # s_weight, mask = self.fp32_2_fp16([s_weight, mask])
 
                 car_loss = self._get_loss(
                     x, y, s_weight, mask, car_rotate=car_rotate)
@@ -501,6 +500,7 @@ class YOLO(object):
         return nd.concat(l, t, r, b, dim=-1)
 
     def predict(self, batch_out):
+        # batch_out = self.fp16_2_fp32(batch_out)
         batch_out = self.merge_and_slice(batch_out, self.slice_point)
 
         batch_score = nd.sigmoid(batch_out[0])
@@ -534,8 +534,10 @@ class YOLO(object):
         print('KMeans Get Default Anchors')
         bs = 1000
         h, w = self.size
-        car_renderer = RenderCar(h, w, self.classes,
-                                 self.ctx[0], pre_load=False)
+        car_renderer = RenderCar(
+            h, w, self.classes,
+            self.ctx[0], pre_load=False)
+
         labels = nd.zeros((bs, 2))
         for i in range(bs):
             bg = nd.zeros((1, 3, h, w), ctx=self.ctx[0])  # b*RGB*h*w
@@ -595,7 +597,7 @@ class YOLO(object):
             self.net,
             (1, 3, self.size[0], self.size[1]),
             self.ctx[0],
-            self.export_folder, fp16=True)
+            self.export_folder, fp16=False)
 
     def _get_loss(self, x, y, s_weight, mask, car_rotate=False):
         rotate_lr = self.scale['rotate'] if car_rotate else 0
@@ -606,14 +608,19 @@ class YOLO(object):
         c = self.CE_loss(x[4], y[4], mask * self.scale['class'])
         return (s, yx, hw, r, c)
 
+    def fp32_2_fp16(self, x):
+        for i, data in enumerate(x):
+            assert type(data) == mx.ndarray.ndarray.NDArray, (
+                'list  element should be mxnet.ndarray')
+            x[i] = x[i].astype('float16', copy=False)
+        return x
 
-def fp32_2_fp16(x):
-    for i, data in enumerate(x):
-        assert type(data) == mx.ndarray.ndarray.NDArray, (
-            'list  element should be mxnet.ndarray')
-        x[i] = x[i].astype('float16')
-    return x
-
+    def fp16_2_fp32(self, x):
+        for i, data in enumerate(x):
+            assert type(data) == mx.ndarray.ndarray.NDArray, (
+                'list  element should be mxnet.ndarray')
+            x[i] = x[i].astype('float32', copy=False)
+        return x
 
 
 '''

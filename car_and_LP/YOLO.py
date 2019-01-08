@@ -93,6 +93,7 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
     def __init__(self, args):
         car_YOLO.YOLO.__init__(self, args)
         pprint(self.classes)
+        self.exp = '01-04x03-35_c200_noeleScaled_Loss'
 
     def _init_net(self, spec, weight):
         # Do not set num_sync_bn_devices=len(self.ctx)
@@ -100,7 +101,8 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
         # (ONNX)
         # self.net = CarLPNet(spec, num_sync_bn_devices=len(self.cx))
         self.net = CarLPNet(spec, num_sync_bn_devices=-1)
-        self.num_downsample = len(spec['layers']) - 2
+        # self.net.cast('float16')
+        self.num_downsample = len(spec['layers']) - 2  # For LP training
         #self.backup_dir = os.path.join(self.version, 'backup')
         self.backup_dir = os.path.join(
             '/media/nolan/SSD1/YOLO_backup/car_and_LP',
@@ -123,6 +125,7 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
         return score_weight
 
     def predict_LP(self, LP_batch_out):
+        # LP_batch_out = self.fp16_2_fp32(LP_batch_out)
         LP_batch_out = self.merge_and_slice(LP_batch_out, self.LP_slice_point)
 
         LP_score = nd.sigmoid(LP_batch_out[0])
@@ -259,7 +262,9 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
             for gpu_i in range(len(bxs)):
                 all_gpu_loss.append([])  # new loss list for gpu_i
                 ctx = self.ctx[gpu_i]  # gpu_i = GPU index
-                bx = bxs[gpu_i]
+
+                bx = bxs[gpu_i]  # .astype('float16', copy=False)
+
                 car_by = car_bys[gpu_i]
                 LP_by = LP_bys[gpu_i]
 
@@ -271,9 +276,13 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
 
                     y, mask = self._loss_mask(car_by, gpu_i)
                     s_weight = self._score_weight(mask, ctx)
+                    # y = self.fp32_2_fp16(y)
+                    # s_weight, mask = self.fp32_2_fp16([s_weight, mask])
 
                     LP_y, LP_mask = self._loss_mask_LP(LP_by, gpu_i)
                     LP_s_weight = self._score_weight_LP(LP_mask, ctx)
+                    # LP_y = self.fp32_2_fp16(LP_y)
+                    # LP_s_weight, LP_mask = self.fp32_2_fp16([LP_s_weight, LP_mask])
 
                 car_loss = self._get_loss(x, y, s_weight, mask, car_rotate=car_rotate)
                 all_gpu_loss[gpu_i].extend(car_loss)
@@ -295,9 +304,9 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
             for bg in self.bg_iter_valid:
                 c += 1
                 bg = bg.data[0].as_in_context(self.ctx[0])
-                imgs, labels = self.car_renderer.render(
-                    bg, 'valid', pascal_rate=pascal_rate)
+                imgs, labels = self.car_renderer.render(bg, 'valid', pascal_rate=pascal_rate)
 
+                # imgs = imgs.astype('float16', copy=False)
                 x, LP_x = self.net(imgs)
                 outs = self.predict(x)
 
@@ -325,48 +334,53 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
         print(global_variable.cyan)
         print('Valid')
 
-        bs = 1
+        bs = 1  # batch size = 1
         h, w = self.size
+
+        # init two matplotlib figures
         ax1 = yolo_cv.init_matplotlib_figure()
         ax2 = yolo_cv.init_matplotlib_figure()
+
+        # init radar figure for vizualizing class distribution
         radar_prob = yolo_cv.RadarProb(self.num_class, self.classes)
 
+        # init background, LP adder, car renderer
         BG_iter = yolo_gluon.load_background('val', bs, h, w)
         LP_generator = licence_plate_render.LPGenerator(h, w)
-        car_renderer = RenderCar(h, w, self.classes,
-                                 self.ctx[0], pre_load=False)
+        car_renderer = RenderCar(h, w, self.classes, self.ctx[0], pre_load=False)
 
         for bg in BG_iter:
+            # select background
             bg = bg.data[0].as_in_context(self.ctx[0])  # b*RGB*w*h
+            # render images, type(imgs) = mxnet.ndarray
+            imgs, labels = car_renderer.render(bg, 'valid', pascal_rate=0.5, render_rate=0.9)
+            imgs, LP_labels = LP_generator.add(imgs, self.LP_r_max, add_rate=0.8)
 
-            imgs, labels = car_renderer.render(
-                bg, 'valid', pascal_rate=0.5, render_rate=0.9)
-
-            imgs, LP_labels = LP_generator.add(
-                imgs, self.LP_r_max, add_rate=0.8)
-
+            # return all_output[::-1], [LP_output]
             x1, x2, x3, LP_x = self.net.forward(is_train=False, data=imgs)
+            outs = self.predict([x1, x2, x3])
+            LP_outs = self.predict_LP([LP_x])
+
+            # convert ndarray to np.array
             img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
 
-            outs = self.predict([x1, x2, x3])
+            # draw licence plate border
+            img, clipped_LP = LP_generator.project_rect_6d.add_edges(img, LP_outs[0, 1:])
+            yolo_cv.matplotlib_show_img(ax2, clipped_LP)
 
-            LP_outs = self.predict_LP([LP_x])
-            img, clipped_LP = LP_generator.project_rect_6d.add_edges(
-                img, LP_outs[0, 1:])
-
+            # draw car border
             img = yolo_cv.cv2_add_bbox(img, labels[0, 0].asnumpy(), 4, use_r=0)
             img = yolo_cv.cv2_add_bbox(img, outs[0], 5, use_r=0)
             yolo_cv.matplotlib_show_img(ax1, img)
-            #yolo_cv.matplotlib_show_img(ax2, clipped_LP)
+
+            # vizualize class distribution
             radar_prob.plot3d(outs[0, 0], outs[0, -self.num_class:])
             raw_input('next')
 
     def export(self):
-        yolo_gluon.export(
-            self.net,
-            (1, 3, self.size[0], self.size[1]),
-            self.ctx[0],
-            self.export_folder)
+        shape = (1, 3, self.size[0], self.size[1])
+        ctx = self.ctx[0]
+        yolo_gluon.export(self.net, shape, ctx, self.export_folder, fp16=False)
 
 
 '''

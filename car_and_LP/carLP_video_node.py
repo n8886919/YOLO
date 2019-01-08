@@ -20,7 +20,7 @@ from YOLO import YOLO
 
 def main():
     args = car.utils.video_Parser()
-    video = CarLPVideo(args)
+    video = CarLPVideo(args, save_video_size=(640, 480))
     video()
 
 
@@ -30,7 +30,7 @@ class CarLPVideo(Video):
         self.project_rect_6d = licence_plate_render.ProjectRectangle6D(
             int(380*1.1), int(160*1.1))
 
-        self.car_threshold = 0.5
+        self.car_threshold = 0.8
         self.LP_threshold = 0.5
 
         self._init(args, save_video_size)
@@ -67,8 +67,9 @@ class CarLPVideo(Video):
             self.ros_publish_array(self.LP_pub, self.mat_LP, pred_LP[0])
             self.ros_publish_array(self.car_pub, self.mat_car, pred_car[0])
 
-            now = rospy.get_rostime()
-            print(('zed to pub: ', (now - self.net_img_time).to_sec()))
+            if hasattr(self, 'net_img_time'):
+                now = rospy.get_rostime()
+                print(('zed to pub: ', (now - self.net_img_time).to_sec()))
 
             self.visualize_carlp(pred_car, pred_LP, img)
             rate.sleep()

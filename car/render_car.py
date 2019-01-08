@@ -37,7 +37,7 @@ class RenderCar():
             brightness=0.3, contrast=0.5, saturation=0.5, hue=1.0)
 
         #self.load_png_images('color_material_elemax30')
-        self.load_png_images('color_and_no_color_elemax20')
+        self.load_png_images('color_and_no_color_elemax60')
         #self.load_mtv_images()
         self.load_pascal_images()
         print(global_variable.reset_color)
