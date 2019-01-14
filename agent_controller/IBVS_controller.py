@@ -1,4 +1,4 @@
-
+from __future__ import print_function
 import threading
 import time
 import Tkinter as tk
@@ -237,18 +237,24 @@ class IBVS_Controller():
         if box[0] > self.car_threshold:
             self.loss_target_counter = 0
 
+            print(box[5])
+            if box[5] > 0:
+                errx = box[5] - 1.0
+            else:
+                print('No Depth Infomation')
+                errx = 0.18 - box[3] * box[4]
+
             erry = get_erry(box[-24:], self.desire_azimuth)
 
             err_now = {
                 #'y': (box[6] - math.pi) if box[6] > 0 else (box[6] + math.pi),
-                #'x': 0.18 - box[3] * box[4],
+                'x': errx,  # desire distance
                 'y': erry,
-                'x': 2.0 - box[5],
-                'z': 0.7 - box[1],
-                'w': 0.5 - box[2]
+                'z': 0.7 - box[1],  # middle of image
+                'w': 0.5 - box[2]  # middle of image
             }
 
-            for ax in AXIS: #['x', 'y', 'z', 'w']
+            for ax in AXIS:
                 self.err_log[ax].append(err_now[ax])
 
                 self.err_pid[ax+'p'] = err_now[ax]
@@ -312,7 +318,7 @@ def get_erry(x, desire_azimuth):
     s = sum(sin_offset*prob)
     vec_ang = math.atan2(s, c)
     vec_rad = (s**2+c**2)**0.5
-    print(vec_ang)
+    #print(vec_ang)
 
     erry = vec_ang - desire_azimuth * math.pi / 180
 

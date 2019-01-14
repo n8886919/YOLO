@@ -16,7 +16,7 @@ def record_loss(losses, loss_names, summary_writer, step=0, exp=''):
     for i, L in enumerate(losses):
         loss_name = loss_names[i]
         summary_writer.add_scalar(
-            exp + 'Scaled_Loss',
+            exp,
             (loss_name, nd.mean(L).asnumpy()),
             step)
 

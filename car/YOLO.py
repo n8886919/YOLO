@@ -16,8 +16,8 @@ from yolo_modules import global_variable
 from utils import *
 from render_car import *
 
-#os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
-#os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
+# os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
+# os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 
 
 def main():
@@ -33,6 +33,11 @@ def main():
 
 class YOLO(object):
     def __init__(self, args):
+        # -------------------- Load args -------------------- #
+        self.ctx = yolo_gluon.get_ctx(args.gpu)
+        self.export_folder = os.path.join(args.version, 'export')
+
+        # -------------------- Load network sprc. -------------------- #
         spec_path = os.path.join(args.version, 'spec.yaml')
         with open(spec_path) as f:
             spec = yaml.load(f)
@@ -43,26 +48,19 @@ class YOLO(object):
         self.all_anchors = nd.array(self.all_anchors)
         self.num_class = len(self.classes)
 
-        num_downsample = len(self.layers)  # number of downsample
-        num_prymaid_layers = len(self.all_anchors)  # number of pyrmaid layers
-        prymaid_start = num_downsample - num_prymaid_layers + 1
-        self.steps = [2**(prymaid_start+i) for i in range(num_prymaid_layers)]
-
-        h = self.size[0]
-        w = self.size[1]
-        self.area = [int(h*w/step**2) for step in self.steps]
-        self.ctx = [gpu(int(i)) for i in args.gpu]
-
+        self._init_step()
+        self._init_area()
         self._init_syxhw()
 
-        self.export_folder = os.path.join(args.version, 'export')
+        # -------------------- Load "Executor" !!! -------------------- #
         if args.mode == 'video' or args.mode == 'valid':
             self.net = yolo_gluon.init_executor(
                 self.export_folder,
                 self.size, self.ctx[0],
                 use_tensor_rt=args.tensorrt,
-                fp16=False)
+                fp16=self.use_fp16)
 
+        # -------------------- Use gluon Block !!! -------------------- #
         elif args.mode == 'export' or args.mode == 'train':
             self.version = args.version
             self.record = args.record
@@ -71,14 +69,17 @@ class YOLO(object):
             if args.mode == 'train':
                 self._init_train()
 
-    # -------------------- Training Part -------------------- #
+    # -------------------- initialization Part -------------------- #
     def _init_net(self, spec, weight):
-        # Do not set num_sync_bn_devices=len(self.ctx)
+        # (ONNX Error) Do not set num_sync_bn_devices=len(self.ctx)
         # because No conversion function for contrib_SyncBatchNorm yet.
-        # (ONNX)
         self.net = CarNet(spec, num_sync_bn_devices=-1)
-        # self.net.cast('float16')
-        #self.backup_dir = os.path.join(self.version, 'backup')
+
+        if self.use_fp16:
+            print('cast net to FP16')
+            self.net.cast('float16')
+
+        # self.backup_dir = os.path.join(self.version, 'backup')
         self.backup_dir = os.path.join(
             '/media/nolan/SSD1/YOLO_backup/car',
             self.version,
@@ -88,6 +89,51 @@ class YOLO(object):
             weight = yolo_gluon.get_latest_weight_from(self.backup_dir)
 
         yolo_gluon.init_NN(self.net, weight, self.ctx)
+
+    def _init_step(self):
+        num_downsample = len(self.layers)  # number of downsample
+        num_prymaid_layers = len(self.all_anchors)  # number of pyrmaid layers
+        prymaid_start = num_downsample - num_prymaid_layers + 1
+        self.steps = [2**(prymaid_start+i) for i in range(num_prymaid_layers)]
+
+    def _init_area(self):
+        h = self.size[0]
+        w = self.size[1]
+        self.area = [int(h*w/step**2) for step in self.steps]
+
+    def _init_syxhw(self):
+        size = self.size
+
+        n = len(self.all_anchors[0])  # anchor per sub_map
+        ctx = self.ctx[0]
+        self.s = nd.zeros((1, sum(self.area), n, 1), ctx=ctx)
+        self.y = nd.zeros((1, sum(self.area), n, 1), ctx=ctx)
+        self.x = nd.zeros((1, sum(self.area), n, 1), ctx=ctx)
+        self.h = nd.zeros((1, sum(self.area), n, 1), ctx=ctx)
+        self.w = nd.zeros((1, sum(self.area), n, 1), ctx=ctx)
+
+        a_start = 0
+        for i, anchors in enumerate(self.all_anchors):  # [12*16,6*8,3*4]
+            a = self.area[i]
+            step = self.steps[i]
+            s = nd.repeat(nd.array([step], ctx=ctx), repeats=a*n)
+
+            x_num = int(size[1]/step)
+            y = nd.arange(0, size[0], step=step, repeat=n*x_num, ctx=ctx)
+
+            x = nd.arange(0, size[1], step=step, repeat=n, ctx=ctx)
+            x = nd.tile(x, int(size[0]/step))
+
+            hw = nd.tile(self.all_anchors[i], (a, 1))
+            h, w = hw.split(num_outputs=2, axis=-1)
+
+            self.s[0, a_start:a_start+a] = s.reshape(a, n, 1)
+            self.y[0, a_start:a_start+a] = y.reshape(a, n, 1)
+            self.x[0, a_start:a_start+a] = x.reshape(a, n, 1)
+            self.h[0, a_start:a_start+a] = h.reshape(a, n, 1)
+            self.w[0, a_start:a_start+a] = w.reshape(a, n, 1)
+
+            a_start += a
 
     def _init_train(self):
         self.exp = datetime.datetime.now().strftime("%m-%dx%H-%M")
@@ -113,9 +159,13 @@ class YOLO(object):
 
         self._get_default_ltrb()
 
+        if self.use_fp16:
+            self.nd_all_anchors = self.fp32_2_fp16(self.nd_all_anchors)
+            self.all_anchors_ltrb = self.fp32_2_fp16(self.all_anchors_ltrb)
+
         self.HB_loss = gluon.loss.HuberLoss()
-        self.L1_loss = gluon.loss.L1Loss()
-        self.L2_loss = gluon.loss.L2Loss()
+        # self.L1_loss = gluon.loss.L1Loss()
+        # self.L2_loss = gluon.loss.L2Loss()
         self.LG_loss = gluon.loss.LogisticLoss(label_format='binary')
         self.CE_loss = gluon.loss.SoftmaxCrossEntropyLoss(
             from_logits=False, sparse_label=False)
@@ -124,7 +174,7 @@ class YOLO(object):
         optimizer = mx.optimizer.create(
             'adam',
             learning_rate=self.learning_rate,
-            multi_precision=True)
+            multi_precision=self.use_fp16)
 
         self.trainer = gluon.Trainer(
             self.net.collect_params(),
@@ -169,16 +219,6 @@ class YOLO(object):
 
         LTRB = nd.concat(*LTRB, dim=0)
         self.all_anchors_ltrb = [LTRB.copyto(device) for device in self.ctx]
-
-    def merge_and_slice(self, all_output, points):
-        output = nd.concat(*all_output, dim=1)
-        i = 0
-        x = []
-        for pt in points:
-            y = output.slice_axis(begin=i, end=pt, axis=-1)
-            x.append(y)
-            i = pt
-        return x
 
     # -------------------- Training Main -------------------- #
     def render_and_train(self):
@@ -275,7 +315,7 @@ class YOLO(object):
         while not self.shutdown_training:
             if not self.rendering_done:
                 # training images are not ready
-                #print('rendering')
+                # print('rendering')
                 time.sleep(0.01)
                 continue
 
@@ -286,29 +326,50 @@ class YOLO(object):
             car_batch_ys = yolo_gluon.split_render_data(car_batch_ys, self.ctx)
 
             self.rendering_done = False
-            self._train_batch(batch_xs, car_bys=car_batch_ys)
+            self._train_batch(batch_xs, car_batch_ys)
 
-    def _train_batch(self, bxs, car_bys=None, car_rotate=False):
+    def _train_batch(self, bxs, car_bys, car_rotate=False):
+        '''
+        Parameter:
+        ----------
+        bxs: list
+          list of mx.ndarray, len(bxs) = len(ctx),
+          shape(ndarray) = (bs, 3, self.h, self.w)
+        car_bys: mxnet.ndarray
+          list of mx.ndarray, len(bxs) = len(ctx),
+          shape(ndarray) = (bs, num_object, num_object_label)
+        car_rotate: bool
+          0: do not train image rotation
+          1: train image rotation
+
+        Returns
+        ----------
+        None
+        '''
+        if self.use_fp16:
+            bxs = self.fp32_2_fp16(bxs)
+            car_by = self.fp32_2_fp16(car_bys)
+
         all_gpu_loss = []
         with mxnet.autograd.record():
             for gpu_i in range(len(bxs)):
                 all_gpu_loss.append([])  # new loss list for gpu_i
+
                 ctx = self.ctx[gpu_i]  # gpu_i = GPU index
                 car_by = car_bys[gpu_i]
                 bx = bxs[gpu_i]  # .astype('float16', copy=False)
 
-                x = self.net(bx)
-                x = self.merge_and_slice(x, self.slice_point)
+                y_ = self.net(bx)
+                y_ = self.merge_and_slice(y_, self.slice_point)
 
                 with mxnet.autograd.pause():
                     y, mask = self._loss_mask(car_by, gpu_i)
                     s_weight = self._score_weight(mask, ctx)
+                    if self.use_fp16:
+                        y = self.fp32_2_fp16(y)
+                        s_weight, mask = self.fp32_2_fp16([s_weight, mask])
 
-                    # y = self.fp32_2_fp16(y)
-                    # s_weight, mask = self.fp32_2_fp16([s_weight, mask])
-
-                car_loss = self._get_loss(
-                    x, y, s_weight, mask, car_rotate=car_rotate)
+                car_loss = self._get_loss(y_, y, s_weight, mask)
 
                 all_gpu_loss[gpu_i].extend(car_loss)
                 sum(all_gpu_loss[gpu_i]).backward()
@@ -319,18 +380,22 @@ class YOLO(object):
             self._record_to_tensorboard_and_save(all_gpu_loss[0])
 
     def _find_best(self, L, gpu_index):
-        IOUs = yolo_gluon.get_iou(self.all_anchors_ltrb[gpu_index], L, mode=2)
+        gi = gpu_index
+        IOUs = yolo_gluon.get_iou(self.all_anchors_ltrb[gi], L, mode=2)
         best_match = int(IOUs.reshape(-1).argmax(axis=0).asnumpy()[0])
-        #print(best_match)
+        # print(best_pixel, best_anchor)
         best_pixel = int(best_match // len(self.all_anchors[0]))
         best_anchor = int(best_match % len(self.all_anchors[0]))
-
-        best_ltrb = self.all_anchors_ltrb[gpu_index][best_pixel, best_anchor]
-        best_ltrb = best_ltrb.reshape(-1)
-
+        '''
         assert best_pixel < (self.area[0] + self.area[1] + self.area[2]), (
             "best_pixel < sum(area), given {} vs {}".format(
                 best_pixel, sum(self.area)))
+        '''
+        if best_pixel >= sum(self.area):
+            best_pixel = sum(self.area) - 1
+
+        best_ltrb = self.all_anchors_ltrb[gi][best_pixel, best_anchor]
+        best_ltrb = best_ltrb.reshape(-1)
 
         a0 = 0
         for i, a in enumerate(self.area):
@@ -353,10 +418,14 @@ class YOLO(object):
         bx_minus_cx = L[2] - (best_ltrb[2] + best_ltrb[0]) / 2
         sigmoid_tx = bx_minus_cx*self.size[1]/step + 0.5
         sigmoid_tx = nd.clip(sigmoid_tx, 0.0001, 0.9999)
-
         tx = yolo_gluon.nd_inv_sigmoid(sigmoid_tx)
-        th = nd.log((L[3]) / self.nd_all_anchors[gpu_index][pyramid_layer, best_anchor, 0])
-        tw = nd.log((L[4]) / self.nd_all_anchors[gpu_index][pyramid_layer, best_anchor, 1])
+
+        bh = (L[3]) / self.nd_all_anchors[gi][pyramid_layer, best_anchor, 0]
+        th = nd.log(bh)
+
+        bw = (L[4]) / self.nd_all_anchors[gi][pyramid_layer, best_anchor, 1]
+        tw = nd.log(bw)
+
         return best_pixel, best_anchor, nd.concat(ty, tx, th, tw, dim=-1)
 
     def _loss_mask(self, label_batch, gpu_index):
@@ -400,6 +469,15 @@ class YOLO(object):
 
         return score_weight
 
+    def _get_loss(self, x, y, s_weight, mask, car_rotate=False):
+        rotate_lr = self.scale['rotate'] if car_rotate else 0
+        s = self.LG_loss(x[0], y[0], s_weight * self.scale['score'])
+        yx = self.HB_loss(x[1], y[1], mask * self.scale['box_yx'])  # L2
+        hw = self.HB_loss(x[2], y[2], mask * self.scale['box_hw'])  # L1
+        r = self.HB_loss(x[3], y[3], mask * rotate_lr)  # L1
+        c = self.CE_loss(x[4], y[4], mask * self.scale['class'])
+        return (s, yx, hw, r, c)
+
     # -------------------- Tensor Board -------------------- #
     def _valid_iou(self):
         for pascal_rate in [1, 0]:
@@ -411,7 +489,10 @@ class YOLO(object):
                 imgs, labels = self.car_renderer.render(
                     bg, 'valid', pascal_rate=pascal_rate)
 
-                x = self.net(imgs)
+                if self.use_fp16:
+                    imgs = self.fp32_2_fp16([imgs])
+
+                x = self.net(imgs[0])
                 outs = self.predict(x)
 
                 pred = nd.zeros((self.batch_size, 4))
@@ -449,40 +530,6 @@ class YOLO(object):
             self.net.collect_params().save(path)
 
     # -------------------- Validation Part -------------------- #
-    def _init_syxhw(self):
-        size = self.size
-
-        n = len(self.all_anchors[0])  # anchor per sub_map
-        ctx = self.ctx[0]
-        self.s = nd.zeros((1, sum(self.area), n, 1), ctx=ctx)
-        self.y = nd.zeros((1, sum(self.area), n, 1), ctx=ctx)
-        self.x = nd.zeros((1, sum(self.area), n, 1), ctx=ctx)
-        self.h = nd.zeros((1, sum(self.area), n, 1), ctx=ctx)
-        self.w = nd.zeros((1, sum(self.area), n, 1), ctx=ctx)
-
-        a_start = 0
-        for i, anchors in enumerate(self.all_anchors):  # [12*16,6*8,3*4]
-            a = self.area[i]
-            step = self.steps[i]
-            s = nd.repeat(nd.array([step], ctx=ctx), repeats=a*n)
-
-            x_num = int(size[1]/step)
-            y = nd.arange(0, size[0], step=step, repeat=n*x_num, ctx=ctx)
-
-            x = nd.arange(0, size[1], step=step, repeat=n, ctx=ctx)
-            x = nd.tile(x, int(size[0]/step))
-
-            hw = nd.tile(self.all_anchors[i], (a, 1))
-            h, w = hw.split(num_outputs=2, axis=-1)
-
-            self.s[0, a_start:a_start+a] = s.reshape(a, n, 1)
-            self.y[0, a_start:a_start+a] = y.reshape(a, n, 1)
-            self.x[0, a_start:a_start+a] = x.reshape(a, n, 1)
-            self.h[0, a_start:a_start+a] = h.reshape(a, n, 1)
-            self.w[0, a_start:a_start+a] = w.reshape(a, n, 1)
-
-            a_start += a
-
     def _yxhw_to_ltrb(self, yxhw):
         ty, tx, th, tw = yxhw.split(num_outputs=4, axis=-1)
         by = (nd.sigmoid(ty)*self.s + self.y) / self.size[0]
@@ -500,7 +547,9 @@ class YOLO(object):
         return nd.concat(l, t, r, b, dim=-1)
 
     def predict(self, batch_out):
-        # batch_out = self.fp16_2_fp32(batch_out)
+        if self.use_fp16:
+            batch_out = self.fp16_2_fp32(batch_out)
+
         batch_out = self.merge_and_slice(batch_out, self.slice_point)
 
         batch_score = nd.sigmoid(batch_out[0])
@@ -597,16 +646,18 @@ class YOLO(object):
             self.net,
             (1, 3, self.size[0], self.size[1]),
             self.ctx[0],
-            self.export_folder, fp16=False)
+            self.export_folder, fp16=True)
 
-    def _get_loss(self, x, y, s_weight, mask, car_rotate=False):
-        rotate_lr = self.scale['rotate'] if car_rotate else 0
-        s = self.LG_loss(x[0], y[0], s_weight * self.scale['score'])
-        yx = self.HB_loss(x[1], y[1], mask * self.scale['box_yx'])  # L2
-        hw = self.HB_loss(x[2], y[2], mask * self.scale['box_hw'])  # L1
-        r = self.HB_loss(x[3], y[3], mask * rotate_lr)  # L1
-        c = self.CE_loss(x[4], y[4], mask * self.scale['class'])
-        return (s, yx, hw, r, c)
+    # -------------------- utils Part -------------------- #
+    def merge_and_slice(self, all_output, points):
+        output = nd.concat(*all_output, dim=1)
+        i = 0
+        x = []
+        for pt in points:
+            y = output.slice_axis(begin=i, end=pt, axis=-1)
+            x.append(y)
+            i = pt
+        return x
 
     def fp32_2_fp16(self, x):
         for i, data in enumerate(x):

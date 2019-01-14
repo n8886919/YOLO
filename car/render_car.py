@@ -17,6 +17,12 @@ from yolo_modules import yolo_gluon
 from yolo_modules import licence_plate_render
 from yolo_modules import global_variable
 
+PNG_MIN_SCALE = 0.2
+PNG_MAX_SCALE = 1.0
+
+PASCAL_MIN_SCALE = 0.2
+PASCAL_MAX_SCALE = 0.9
+
 
 class RenderCar():
     def __init__(self, img_h, img_w, classes, ctx, pre_load=True):
@@ -37,7 +43,7 @@ class RenderCar():
             brightness=0.3, contrast=0.5, saturation=0.5, hue=1.0)
 
         #self.load_png_images('color_material_elemax30')
-        self.load_png_images('color_and_no_color_elemax60')
+        self.load_png_images('color_and_no_color_elemax20')
         #self.load_mtv_images()
         self.load_pascal_images()
         print(global_variable.reset_color)
@@ -91,12 +97,12 @@ class RenderCar():
 
             # -------------------- move -------------------- #
             paste_x = np.random.randint(
-                low=int(-r_box_l-0.3*r_box_w),
-                high=int(self.w-r_box_l-0.7*r_box_w))
+                low=int(-r_box_l - 0.3*r_box_w),
+                high=int(self.w - r_box_l - 0.7*r_box_w))
 
             paste_y = np.random.randint(
-                low=int(-r_box_t-0.3*r_box_h),
-                high=int(self.h-r_box_t-0.7*r_box_h))
+                low=int(-r_box_t - 0.3*r_box_h),
+                high=int(self.h - r_box_t - 0.7*r_box_h))
 
             box_y = (r_box_b + r_box_t)/2. + paste_y
             box_x = (r_box_r + r_box_l)/2. + paste_x
@@ -271,11 +277,11 @@ class RenderCar():
         box_w = box_r - box_l
         box_h = (box_b - box_t) * r1
 
-        w_max_scale = 0.9 * self.w / box_w
-        h_max_scale = 0.9 * self.h / box_h
+        w_max_scale = PASCAL_MAX_SCALE * self.w / box_w
+        h_max_scale = PASCAL_MAX_SCALE * self.h / box_h
 
-        w_min_scale = 0.25 * self.w / float(box_w)
-        h_min_scale = 0.25 * self.h / float(box_h)
+        w_min_scale = PASCAL_MIN_SCALE * self.w / float(box_w)
+        h_min_scale = PASCAL_MIN_SCALE * self.h / float(box_h)
 
         max_scale = min(w_max_scale, h_max_scale)
         min_scale = max(w_min_scale, h_min_scale)
@@ -328,8 +334,8 @@ class RenderCar():
             img_cls, label_distribution = self.get_label_dist(ele, azi)
             pil_img = PIL.Image.open(img_path).convert('RGBA')
 
-        min_scale = 0.25
-        max_scale = 1.0
+        min_scale = PNG_MIN_SCALE
+        max_scale = PNG_MAX_SCALE
 
         resize, resize_w, resize_h, pil_img = self._resize(
             pil_img, min_scale, max_scale, r1)
@@ -354,7 +360,8 @@ class RenderCar():
         return resize, resize_w, resize_h, pil_img
 
     def get_label_dist(self, ele, azi, sigma=0.1):
-        ''' Reference: https://en.wikipedia.org/wiki/Great-circle_distance
+        '''
+        Reference: https://en.wikipedia.org/wiki/Great-circle_distance
         Parameters
         ----------
         ele: float

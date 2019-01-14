@@ -148,6 +148,12 @@ int main(int argc, char **argv)
             set_mode_client.call(offb_set_mode);
             arm_cmd.request.value = false;
             arming_client.call(arm_cmd);
+
+            pose.pose.position.x = 0;
+            pose.pose.position.y = 0;
+            pose.pose.position.z = 0.8;
+            pose.pose.orientation.z = -0.7071;
+            pose.pose.orientation.w = 0.7071;
         }
 
 	   else{
@@ -200,8 +206,6 @@ int main(int argc, char **argv)
                     break;
                 }
             }
-      
-
 
             if (set_pose) {
                 ROS_INFO(

@@ -150,7 +150,6 @@ class Video(object):
         size = tuple(self.yolo.size[::-1])
         ctx = self.ctx[0]
         mx_resize = mxnet.image.ForceResizeAug(size)
-
         while not rospy.is_shutdown():
             if not hasattr(self, 'img') or self.img is None:
                 print('Wait For Image')
@@ -167,10 +166,12 @@ class Video(object):
 
             # -------------------- image -------------------- #
             net_img = self.img.copy()
-
             nd_img = yolo_gluon.cv_img_2_ndarray(net_img, ctx, mxnet_resize=mx_resize)
-            nd_img = nd_img.astype('float16')
-            # nd_img = yolo_gluon.nd_white_balance(nd_img, bgr=[1.0, 1.0, 1.0])
+
+            if self.yolo.use_fp16:
+                nd_img = nd_img.astype('float16')
+
+           # nd_img = yolo_gluon.nd_white_balance(nd_img, bgr=[1.0, 1.0, 1.0])
 
             net_out = self.yolo.net.forward(is_train=False, data=nd_img)
             net_out[0].wait_to_read()

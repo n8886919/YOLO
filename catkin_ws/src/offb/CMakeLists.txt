@@ -128,15 +128,23 @@ include_directories(
 ## Declare a C++ executable
 add_executable(offb_main src/offb_main.cpp)
 add_executable(offb_vel src/offb_vel.cpp)
+add_executable(offb_vel_kb_test src/offb_vel_kb_test.cpp)
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-add_dependencies(offb_main offb_vel ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(
+  offb_main offb_vel offb_vel_kb_test 
+  ${${PROJECT_NAME}_EXPORTED_TARGETS} 
+  ${catkin_EXPORTED_TARGETS}
+)
 
 # Specify libraries to link a library or executable target against
 target_link_libraries(offb_main
   ${catkin_LIBRARIES}
 )
 target_link_libraries(offb_vel
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(offb_vel_kb_test
   ${catkin_LIBRARIES}
 )
 #############
