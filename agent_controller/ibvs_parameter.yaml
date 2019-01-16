@@ -1,4 +1,5 @@
-{
+{ 
+  DESIRE_AZI_TOPIC: '/ibvs/desire_azi',
   PID_TOPIC: '/ibvs_gui/pid',
   LAND_TOPIC: '/ibvs_gui/land',
   FIX_POSE_TOPIC: '/ibvs_gui/fix_pose',

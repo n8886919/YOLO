@@ -98,7 +98,7 @@ class LPGenerator():
         return LP, LP_type, label
 
     def random_projection_LP_6D(self, LP, in_size, out_size, r_max):
-        Z = np.random.uniform(low=1500., high=4000.)
+        Z = np.random.uniform(low=1500., high=5000.)
         X = (Z * 10 / 30.) * np.random.uniform(low=-1, high=1)
         Y = (Z * 8 / 30.) * np.random.uniform(low=-1, high=1)
         r1 = np.random.uniform(low=-1, high=1) * r_max[0] * math.pi / 180.
@@ -329,6 +329,22 @@ class ProjectRectangle6D():
         self.projection_matrix = intrinsic_matrix * extrinsic_matrix
         '''
 
+    def __call__(self, pose_6d):
+        # [mm, mm, mm, rad, rad, rad]
+        points = np.zeros((4, 2))
+        '''
+        subs = {
+            self.X: pose_6d[0], self.Y: pose_6d[1], self.Z: pose_6d[2],
+            self.r1: pose_6d[3], self.r2: pose_6d[4], self.r3: pose_6d[5]}
+        ans = self.projection_matrix.evalf(subs=subs)
+        '''
+        ans = self.projection_matrix(pose_6d[:6])
+        for i in range(4):
+            points[i, 0] = ans[0, i] / ans[2, i]
+            points[i, 1] = ans[1, i] / ans[2, i]
+
+        return points.astype(np.float32)
+
     def projection_matrix(self, pose):
         X, Y, Z, r1, r2, r3 = pose
         sin = math.sin
@@ -355,22 +371,6 @@ class ProjectRectangle6D():
             [Z + a - c, Z + a + c, Z - a + c, Z - a - c]])
 
         return ans
-
-    def __call__(self, pose_6d):
-        # [mm, mm, mm, rad, rad, rad]
-        points = np.zeros((4, 2))
-        '''
-        subs = {
-            self.X: pose_6d[0], self.Y: pose_6d[1], self.Z: pose_6d[2],
-            self.r1: pose_6d[3], self.r2: pose_6d[4], self.r3: pose_6d[5]}
-        ans = self.projection_matrix.evalf(subs=subs)
-        '''
-        ans = self.projection_matrix(pose_6d[:6])
-        for i in range(4):
-            points[i, 0] = ans[0, i] / ans[2, i]
-            points[i, 1] = ans[1, i] / ans[2, i]
-
-        return points.astype(np.float32)
 
     def add_edges(self, img, pose, LP_size=(160, 380)):
         corner_pts = self.__call__(pose)
@@ -431,27 +431,3 @@ h = 84.0*cos(r1)*cos(r3)
   Z - a - c]
 ]
 '''
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -294,7 +294,8 @@ elif args.mode == 'valid':
         bg = bg.data[0].as_in_context(ctx[0])
         imgs, labels = generator.render(bg)
         score_x, class_x = net(imgs)
-
+        print(score_x.shape)
+        print(class_x.shape)
         imgs = yolo_gluon.batch_ndimg_2_cv2img(imgs)
         for i in range(bs):
             ax = axs[i]

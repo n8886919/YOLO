@@ -13,6 +13,10 @@ from yolo_modules import licence_plate_render
 from yolo_modules import global_variable
 import time
 
+import mxnet
+from mxnet import gpu
+from mxnet import nd
+
 import car.utils
 from car.video_node import Video
 from YOLO import YOLO
@@ -20,8 +24,8 @@ from YOLO import YOLO
 
 def main():
     args = car.utils.video_Parser()
-    video = CarLPVideo(args, save_video_size=(640, 480))
-    video()
+    video = CarLPVideo(args, save_video_size=None)
+    video.run()
 
 
 class CarLPVideo(Video):
@@ -30,7 +34,7 @@ class CarLPVideo(Video):
         self.project_rect_6d = licence_plate_render.ProjectRectangle6D(
             int(380*1.1), int(160*1.1))
 
-        self.car_threshold = 0.8
+        self.car_threshold = 0.5
         self.LP_threshold = 0.5
 
         self._init(args, save_video_size)
@@ -72,7 +76,42 @@ class CarLPVideo(Video):
                 print(('zed to pub: ', (now - self.net_img_time).to_sec()))
 
             self.visualize_carlp(pred_car, pred_LP, img)
-            rate.sleep()
+            #rate.sleep()
+
+    def run(self):
+        size = tuple(self.yolo.size[::-1])
+        ctx = self.ctx[0]
+        self.radar_prob = yolo_cv.RadarProb(self.yolo.num_class, self.yolo.classes)
+        mx_resize = mxnet.image.ForceResizeAug(size)
+        #cap = cv2.VideoCapture('/media/nolan/SSD1/YOLO_backup/McLaren P1 Electric Kids Ride on Car 669R ShoppersPakistan.mp4')
+        while not rospy.is_shutdown():
+            if not hasattr(self, 'img') or self.img is None:
+                print('Wait For Image')
+                time.sleep(1.0)
+                continue
+
+            # -------------------- image -------------------- #
+            #self.ret, net_img = cap.read()
+            net_img = copy.copy(self.img)
+            nd_img = yolo_gluon.cv_img_2_ndarray(net_img, ctx, mxnet_resize=mx_resize)
+
+            if self.yolo.use_fp16:
+                nd_img = nd_img.astype('float16')
+
+            # nd_img = yolo_gluon.nd_white_balance(nd_img, bgr=[1.0, 1.0, 1.0])
+            net_out = self.yolo.net.forward(is_train=False, data=nd_img)
+
+            # -------------------- image -------------------- #
+            pred_car = self.yolo.predict(net_out[:3])
+            #vec_ang, vec_rad, prob = self.radar_prob.cls2ang(pred_car[0, 0], pred_car[0, -self.yolo.num_class:])
+            #pred_car[0, 0] = vec_rad
+            pred_car[0, 5] = -1
+            self.ros_publish_array(self.car_pub, self.mat_car, pred_car[0])
+
+            pred_LP = self.yolo.predict_LP([net_out[-1]])
+            self.ros_publish_array(self.LP_pub, self.mat_LP, pred_LP[0])
+
+            self.visualize_carlp(pred_car, pred_LP, net_img)
 
     def visualize_carlp(self, pred_car, pred_LP, img):
         LP_out = pred_LP[0]

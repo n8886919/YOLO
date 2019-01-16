@@ -16,15 +16,21 @@ from yolo_modules import global_variable
 from utils import *
 from render_car import *
 
-# os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
-# os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
+render_thread_pre_load = False
+export_onnx = False
 
 
 def main():
     args = yolo_Parser()
     yolo = YOLO(args)
 
-    available_mode = ['train', 'valid', 'export', 'kmean', 'pr']
+    available_mode = ['train',
+                      'valid',
+                      'export',
+                      'render_and_train',
+                      'kmean',
+                      'pr']
+
     assert args.mode in available_mode, \
         'Available Modes Are {}'.format(available_mode)
 
@@ -53,7 +59,9 @@ class YOLO(object):
         self._init_syxhw()
 
         # -------------------- Load "Executor" !!! -------------------- #
-        if args.mode == 'video' or args.mode == 'valid':
+        if (args.mode == 'video' or
+           args.mode == 'valid'):
+
             self.net = yolo_gluon.init_executor(
                 self.export_folder,
                 self.size, self.ctx[0],
@@ -61,12 +69,15 @@ class YOLO(object):
                 fp16=self.use_fp16)
 
         # -------------------- Use gluon Block !!! -------------------- #
-        elif args.mode == 'export' or args.mode == 'train':
+        elif (args.mode == 'export' or
+              args.mode == 'train' or
+              args.mode == 'render_and_train'):
+
             self.version = args.version
             self.record = args.record
             self._init_net(spec, args.weight)
 
-            if args.mode == 'train':
+            if args.mode != 'export':
                 self._init_train()
 
     # -------------------- initialization Part -------------------- #
@@ -226,16 +237,15 @@ class YOLO(object):
         print('Render And Train')
         print(global_variable.reset_color)
         # -------------------- show training image # --------------------
-        '''
+
         self.batch_size = 1
         ax = yolo_cv.init_matplotlib_figure()
-        '''
+
         h, w = self.size
         # -------------------- background -------------------- #
         self.bg_iter_valid = yolo_gluon.load_background('val', self.batch_size, h, w)
         self.bg_iter_train = yolo_gluon.load_background('train', self.batch_size, h, w)
-
-        self.car_renderer = RenderCar(h, w, self.classes, self.ctx[0], pre_load=True)
+        self.car_renderer = RenderCar(h, w, self.classes, self.ctx[0], pre_load=False)
 
         # -------------------- main loop -------------------- #
         while True:
@@ -253,13 +263,14 @@ class YOLO(object):
             self._train_batch(batch_xs, car_bys=car_batch_ys)
 
             # -------------------- show training image # --------------------
-            '''
+            if self.use_fp16:
+                img = img.astype('float32')
+
             img = yolo_gluon.batch_ndimg_2_cv2img(batch_xs[0])[0]
             img = yolo_cv.cv2_add_bbox(img, car_batch_ys[0][0, 0].asnumpy(), 4, use_r=0)
             yolo_cv.matplotlib_show_img(ax, img)
             print(car_batch_ys[0][0])
             raw_input()
-            '''
 
     def train(self):
         print(global_variable.cyan)
@@ -284,7 +295,7 @@ class YOLO(object):
     def _render_thread(self):
         h, w = self.size
         self.car_renderer = RenderCar(
-            h, w, self.classes, self.ctx[0], pre_load=True)
+            h, w, self.classes, self.ctx[0], pre_load=render_thread_pre_load)
 
         self.bg_iter_valid = yolo_gluon.load_background(
             'val', self.batch_size, h, w)
@@ -646,7 +657,9 @@ class YOLO(object):
             self.net,
             (1, 3, self.size[0], self.size[1]),
             self.ctx[0],
-            self.export_folder, fp16=True)
+            self.export_folder,
+            onnx=export_onnx,
+            fp16=self.use_fp16)
 
     # -------------------- utils Part -------------------- #
     def merge_and_slice(self, all_output, points):

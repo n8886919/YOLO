@@ -65,7 +65,8 @@ class RadarProb():
 
         plt.pause(0.001)
 
-    def plot(self, vec_ang, vec_rad, prob):
+    def plot(self, confidence, prob):
+        vec_ang, vec_rad, prob = self.cls2ang(confidence, prob)
         cls_num = len(prob)
         ang = np.linspace(0, 2*np.pi, cls_num, endpoint=False)
         ang = np.concatenate((ang, [ang[0]]))

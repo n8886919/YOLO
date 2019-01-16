@@ -28,13 +28,13 @@ from YOLO import *
 def main():
     args = utils.video_Parser()
     video = Video(args)
-    video()
+    video.run()
 
 
 class Video(object):
     def __init__(self, args, save_video_size=None):
         self.yolo = YOLO(args)
-        self.car_threshold = 0.7
+        self.car_threshold = 0.5
         self._init(args, save_video_size)
 
     def _init(self, args, save_video_size):
@@ -54,7 +54,6 @@ class Video(object):
         self.car_pub = rospy.Publisher(self.yolo.pub_box, Float32MultiArray, queue_size=1)
 
         self.mat_car = Float32MultiArray()
-
         # -------------------- init_dev -------------------- #
         if self.dev == 'ros':
             depth_topic = '/zed/depth/depth_registered'
@@ -65,7 +64,7 @@ class Video(object):
         else:
             threading.Thread(target=self._get_frame).start()
 
-        threading.Thread(target=self._net_thread).start()
+        #threading.Thread(target=self._net_thread).start()
 
         # -------------------- init_radar -------------------- #
         if self.radar:
@@ -110,10 +109,39 @@ class Video(object):
 
             if hasattr(self, 'net_img_time'):
                 now = rospy.get_rostime()
-                print(('zed to pub: ', (now - self.net_img_time).to_sec()))
-
+                #print(('zed to pub: ', (now - self.net_img_time).to_sec()))
             self.visualize(pred_car, img)
-            rate.sleep()
+            #rate.sleep()
+
+    def run(self):
+        print(1111)
+        size = tuple(self.yolo.size[::-1])
+        ctx = self.ctx[0]
+        mx_resize = mxnet.image.ForceResizeAug(size)
+        #cap = cv2.VideoCapture('/media/nolan/SSD1/YOLO_backup/McLaren P1 Electric Kids Ride on Car 669R ShoppersPakistan.mp4')
+        while not rospy.is_shutdown():
+            if not hasattr(self, 'img') or self.img is None:
+                print('Wait For Image')
+                time.sleep(1.0)
+                continue
+
+            # -------------------- image -------------------- #
+            #self.ret, net_img = cap.read()
+            net_img = copy.copy(self.img)
+            nd_img = yolo_gluon.cv_img_2_ndarray(net_img, ctx, mxnet_resize=mx_resize)
+
+            if self.yolo.use_fp16:
+                nd_img = nd_img.astype('float16')
+
+           # nd_img = yolo_gluon.nd_white_balance(nd_img, bgr=[1.0, 1.0, 1.0])
+            net_out = self.yolo.net.forward(is_train=False, data=nd_img)
+
+            # -------------------- image -------------------- #
+            pred_car = self.yolo.predict(net_out[:3])
+            pred_car[0, 5] = -1
+            self.ros_publish_array(self.car_pub, self.mat_car, pred_car[0])
+
+            self.visualize(pred_car, net_img)
 
     def _get_frame(self):
         dev = self.dev
@@ -162,7 +190,7 @@ class Video(object):
             if hasattr(self, 'img_time'):
                 net_img_time = self.img_time
                 now = rospy.get_rostime()
-                print(('zed to net: ', (now - net_img_time).to_sec()))
+                #print(('zed to net: ', (now - net_img_time).to_sec()))
 
             # -------------------- image -------------------- #
             net_img = self.img.copy()
@@ -175,7 +203,6 @@ class Video(object):
 
             net_out = self.yolo.net.forward(is_train=False, data=nd_img)
             net_out[0].wait_to_read()
-
             '''
             # ----------------------
             now = rospy.get_rostime()

@@ -9,6 +9,7 @@ import yaml
 import rospy
 from geometry_msgs.msg import TwistStamped
 from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import Float32
 from std_msgs.msg import Float32MultiArray
 from std_msgs.msg import MultiArrayDimension
 from std_msgs.msg import Bool
@@ -90,8 +91,11 @@ class PID_GUI(object):
         self.ibvs_controller.ibvs_land_pub.publish(b)
 
     def _set_azimuth(self, v):
-
         self.ibvs_controller.desire_azimuth = float(v)
+
+        azi_msgs = Float32()
+        azi_msgs.data = self.ibvs_controller.desire_azimuth
+        self.ibvs_desire_azi_pub.publish(azi_msgs)
 
     def _apply(self):
         print(global_variable.green)
@@ -142,6 +146,10 @@ class IBVS_Controller():
         rospy.Subscriber('/YOLO/box', Float32MultiArray, self._vel_callback)
 
         self.bridge = CvBridge()
+
+        self.ibvs_desire_azi_pub = rospy.Publisher(
+            IBVS_PARAMETER['DESIRE_AZI_TOPIC'],
+            Float32, queue_size=1)
 
         self.ibvs_vel_pub = rospy.Publisher(
             IBVS_PARAMETER['CMD_VEL_TOPIC'],
@@ -331,6 +339,5 @@ def get_erry(x, desire_azimuth):
 
 
 if __name__ == '__main__':
-    #pid_gui = PID_GUI()
     pid_gui = PID_GUI()
     pid_gui.win.mainloop()

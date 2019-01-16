@@ -30,12 +30,21 @@ from car.render_car import RenderCar
 import car.YOLO as car_YOLO
 import licence_plate.LP_detection as LP_detection
 
+render_thread_pre_load = True
+export_onnx = False
+
 
 def main():
     args = utils.yolo_Parser()
     yolo = YOLO(args)
 
-    available_mode = ['train', 'valid', 'export', 'kmean', 'pr']
+    available_mode = ['train',
+                      'valid',
+                      'export',
+                      'render_and_train',
+                      'kmean',
+                      'pr']
+
     assert args.mode in available_mode, \
         'Available Modes Are {}'.format(available_mode)
 
@@ -101,7 +110,6 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
         # (ONNX)
         # self.net = CarLPNet(spec, num_sync_bn_devices=len(self.cx))
         self.net = CarLPNet(spec, num_sync_bn_devices=-1)
-        # self.net.cast('float16')
         self.num_downsample = len(spec['layers']) - 2  # For LP training
         #self.backup_dir = os.path.join(self.version, 'backup')
         self.backup_dir = os.path.join(
@@ -178,7 +186,7 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
         self.bg_iter_valid = yolo_gluon.load_background('val', bs, h, w)
         self.bg_iter_train = yolo_gluon.load_background('train', bs, h, w)
 
-        self.car_renderer = RenderCar(h, w, self.classes, self.ctx[0], pre_load=True)
+        self.car_renderer = RenderCar(h, w, self.classes, self.ctx[0], pre_load=False)
         LP_generator = licence_plate_render.LPGenerator(h, w)
 
         # -------------------- main loop -------------------- #
@@ -217,7 +225,7 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
         LP_generator = licence_plate_render.LPGenerator(h, w)
 
         self.car_renderer = RenderCar(
-            h, w, self.classes, self.ctx[0], pre_load=True)
+            h, w, self.classes, self.ctx[0], pre_load=render_thread_pre_load)
 
         while not self.shutdown_training:
             if self.rendering_done:
@@ -374,13 +382,17 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
             yolo_cv.matplotlib_show_img(ax1, img)
 
             # vizualize class distribution
-            radar_prob.plot3d(outs[0, 0], outs[0, -self.num_class:])
+            radar_prob.plot(outs[0, 0], outs[0, -self.num_class:])
             raw_input('next')
 
     def export(self):
-        shape = (1, 3, self.size[0], self.size[1])
-        ctx = self.ctx[0]
-        yolo_gluon.export(self.net, shape, ctx, self.export_folder, fp16=False)
+        yolo_gluon.export(
+            self.net,
+            (1, 3, self.size[0], self.size[1]),
+            self.ctx[0],
+            self.export_folder,
+            onnx=False,
+            fp16=False)
 
 
 '''
@@ -457,6 +469,4 @@ class Benchmark():
 
 # -------------------- Main -------------------- #
 if __name__ == '__main__':
-    # os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
-    # os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
     main()
