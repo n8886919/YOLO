@@ -138,7 +138,13 @@ def _image_callback(img):
     pub.publish(text)
 
 
+save_counter = 0
+alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+number = '2356789'
+
+
 def cv2_show_OCR_result(img, score, text):
+    global save_counter
     x = np.arange(8, 384, 16).reshape(-1, 1)
     y = ((1-score) * 160).reshape(-1, 1)
     points = np.concatenate((x, y), axis=-1)
@@ -148,6 +154,19 @@ def cv2_show_OCR_result(img, score, text):
     cv2.putText(img, text, (0, 60), 2, 2, (0, 0, 255), 2)
     # image/text/left-top/font type/size/color/width
     cv2.imshow('img', img)
+    if len(text) == 7 and \
+       text[0] in alphabet and \
+       text[1] in alphabet and \
+       text[2] in alphabet and \
+       text[3] in number and \
+       text[4] in number and \
+       text[5] in number and \
+       text[6] in number:
+
+        folder = '/media/nolan/SSD1/YOLO_backup/ocr/saved_LP'
+        path = os.path.join(folder, 'ocr_out_%d.jpg' % save_counter)
+        cv2.imwrite(path, img)
+        save_counter += 1
     cv2.waitKey(1)
 
 
@@ -168,8 +187,8 @@ def predict(nd_img):
            score_x2[i+1] > score_x2[i+2] and score_x2[i+1] > score_x2[i]:
 
             c = np.argmax(class_x[i])
-            print('\033[1;32m%s\033[0m(%.2f),' % (cls_names[c], np.max(class_x[i])),
-                end='')
+            print('\033[1;32m%s\033[0m(%.2f),' % (
+                  cls_names[c], np.max(class_x[i])), end='')
             text = text + cls_names[c]
     print()
     return score_x, text
@@ -320,5 +339,7 @@ elif args.mode == 'valid':
         raw_input('press Enter to next batch....')
 
 elif args.mode == 'export':
-    shape = (1, 3, size[0], size[1])
-    yolo_gluon.export(net, shape, export_file)
+    yolo_gluon.export(net,
+                      (1, 3, size[0], size[1]),
+                      ctx[0],
+                      export_file)

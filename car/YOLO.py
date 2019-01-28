@@ -593,6 +593,7 @@ class YOLO(object):
         print(global_variable.cyan)
         print('KMeans Get Default Anchors')
         bs = 1000
+        k = 9
         h, w = self.size
         car_renderer = RenderCar(
             h, w, self.classes,
@@ -606,15 +607,24 @@ class YOLO(object):
 
             labels[i] = label[0, 0, 3:5]
 
-            if i % 1000 == 0:
+            if i % (bs/10) == 0:
                 print(i/float(bs))
 
-        ans = kmeans.main(labels, 9)
+        ans = kmeans.main(labels, k, dis_method='iou')
+
+        all_means_cent = [0, 0]
         for a in ans:
+
             a = a.asnumpy()
+            all_means_cent[0] += a[0]
+            all_means_cent[1] += a[1]
             # anchor areas, for sort
             print('[h, w] = [%.4f, %.4f], area = %.2f' % (
                 a[0], a[1], a[0]*a[1]))
+
+        all_means_cent[0] /= float(k)
+        all_means_cent[1] /= float(k)
+        print('all_means_cent = {}'.format(all_means_cent))
 
         while 1:
             time.sleep(0.1)

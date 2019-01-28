@@ -94,86 +94,81 @@ int main(int argc, char **argv) {
 	arm_cmd.request.value = true;
 
 	ros::Time last_request = ros::Time::now();
-
+    bool land = false;
 	while(ros::ok()){
-		if( current_state.mode != "OFFBOARD" &&
-			(ros::Time::now() - last_request > ros::Duration(5.0))){
-			if( set_mode_client.call(offb_set_mode) &&
-				offb_set_mode.response.mode_sent){
-				printf(WHT "Offboard enabled" RESET);
-			}
-			last_request = ros::Time::now();
-		}
-		else {
-			if( !current_state.armed &&
-				(ros::Time::now() - last_request > ros::Duration(5.0))){
-				if( arming_client.call(arm_cmd) &&
-					arm_cmd.response.success){
-					printf(WHT "Vehicle armed" RESET);
-				}
-				last_request = ros::Time::now();
-			}
-		}
+        if (land){
+            ROS_INFO("LLLLLLLLAAAAAAANNNNNNNDDDDDDDDD!!!!!!!!!");
+            offb_set_mode.request.custom_mode = "MANUAL";
+            set_mode_client.call(offb_set_mode);
+            arm_cmd.request.value = false;
+            arming_client.call(arm_cmd);
+        }
+        else {         
+		    if( current_state.mode != "OFFBOARD" &&
+			    (ros::Time::now() - last_request > ros::Duration(5.0))){
+			    if( set_mode_client.call(offb_set_mode) &&
+				    offb_set_mode.response.mode_sent){
+				    printf(WHT "Offboard enabled" RESET);
+			    }
+			    last_request = ros::Time::now();
+		    }
+		    else {
+			    if( !current_state.armed &&
+				    (ros::Time::now() - last_request > ros::Duration(5.0))){
+				    if( arming_client.call(arm_cmd) &&
+					    arm_cmd.response.success){
+					    printf(WHT "Vehicle armed" RESET);
+				    }
+				    last_request = ros::Time::now();
+			    }
+		    }
 
-		int c = getch();
-		//ROS_INFO("getch: %d", c);
-		if (c != EOF) {
-			switch (c) {				
-				case 49:
-					ctr_mode = 0;
-					printf(YEL "Set Position" RESET);
-					break;
-				case 50:
-					ctr_mode = 1;
-					printf(YEL "KeyBoard Control" RESET);
-					break;
-				/*
-				case 51:
-					ctr_mode = 2;
-					printf(YEL "Enable IBVS" RESET);
-					break;
-				*/
-				default:
-					break;
-			}
-		}//if (c != EOF)
-		switch (ctr_mode) {
-			case 0:
-				take_off();
-				break;
-			case 1:
-				KeyBoard_control(c);
-				break;
-			
-			/*case 2:
-				IBVS_control();
-				break;*/
-
-			default:
-				break;
-		}//switch (ctr_mode)
-		ros::spinOnce();
-		rate.sleep();
+		    int c = getch();
+		    //ROS_INFO("getch: %d", c);
+		    if (c != EOF) {
+			    switch (c) {				
+				    case 49:
+					    ctr_mode = 0;
+					    printf(YEL "Set Position" RESET);
+					    break;
+				    case 50:
+					    ctr_mode = 1;
+					    printf(YEL "KeyBoard Control" RESET);
+					    break;
+					case 51:
+					    ctr_mode = 2;
+					    printf(YEL "Land" RESET);
+					    break;					    
+				    /*
+				    case 51:
+					    ctr_mode = 2;
+					    printf(YEL "Enable IBVS" RESET);
+					    break;
+				    */
+				    default:
+					    break;
+			    }
+		    }//if (c != EOF)
+		    switch (ctr_mode) {
+			    case 0:
+				    take_off();
+				    break;
+			    case 1:
+				    KeyBoard_control(c);
+				    break;
+                case 2:
+				    land = true;
+				    break;
+			    default:
+				    break;
+		    }//switch (ctr_mode)
+		    ros::spinOnce();
+		    rate.sleep();
+		}
 	}//while
 	return 0;
 }
-void IBVS_control() {
-	if (ros::Time::now() - ibvs_request_time > ros::Duration(0.5)) {
-		ibvs_global_vel.linear.x = 0;
-		ibvs_global_vel.linear.y = 0;
-		ibvs_global_vel.linear.z = 0;
-		ibvs_global_vel.angular.z = 0;
-	printf(RED "IBVS\tLoss Target: %.2f" RESET, 
-		((ros::Time::now() - ibvs_request_time).sec) + 1e-9*((ros::Time::now() - ibvs_request_time).nsec));
-	}
-	
-	global_vel_pub.publish(ibvs_global_vel);
-	printf(YEL "IBVS\tx:%.2f\t\ty:%.2f\t\tz:%.2f\t\tyaw:%.2f" RESET, 
-		ibvs_global_vel.linear.x, 
-		ibvs_global_vel.linear.y, 
-		ibvs_global_vel.linear.z, 
-		ibvs_global_vel.angular.z);
-}
+
 void take_off() {
 	geometry_msgs::PoseStamped p;
 	/*
@@ -189,7 +184,7 @@ void take_off() {
 }
 void KeyBoard_control(int c) {
   static geometry_msgs::Twist ts;
-  ts.angular.z = desire_yaw - yaw;
+  ts.angular.z = desire_yaw - yaw; // Keep same direction
   switch (c) {  
     case 65:    // key up
       ts.linear.x = 0;
@@ -199,7 +194,7 @@ void KeyBoard_control(int c) {
     case 66:    // key down
       ts.linear.x = 0;
       ts.linear.y = 0;
-      ts.linear.z -= 2;
+      ts.linear.z -= 0.2;
       //ts.angular.z = 0;
       break;
     case 119:    // key w

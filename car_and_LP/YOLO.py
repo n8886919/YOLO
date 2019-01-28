@@ -102,7 +102,6 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
     def __init__(self, args):
         car_YOLO.YOLO.__init__(self, args)
         pprint(self.classes)
-        self.exp = '01-04x03-35_c200_noeleScaled_Loss'
 
     def _init_net(self, spec, weight):
         # Do not set num_sync_bn_devices=len(self.ctx)

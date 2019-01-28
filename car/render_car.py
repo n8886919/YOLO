@@ -22,6 +22,7 @@ PNG_MAX_SCALE = 1.0
 
 PASCAL_MIN_SCALE = 0.2
 PASCAL_MAX_SCALE = 0.9
+PNG_DATASET = 'color_and_no_color_elemax60'
 
 
 class RenderCar():
@@ -43,7 +44,7 @@ class RenderCar():
             brightness=0.3, contrast=0.5, saturation=0.5, hue=1.0)
 
         #self.load_png_images('color_material_elemax30')
-        self.load_png_images('color_and_no_color_elemax60')
+        self.load_png_images(PNG_DATASET)
         #self.load_mtv_images()
         self.load_pascal_images()
         print(global_variable.reset_color)
@@ -187,12 +188,14 @@ class RenderCar():
     def load_png_images(self, dataset):
         # -------------------- load png image and path-------------------- #
         path = _join(self.disk, 'blender_car', dataset)
+
         #path = _join(self.disk, 'no_label_car_raw_images/100')
         cad_path = {
             'train': _join(path, 'train'),
             'valid': _join(path, 'valid')}
         self.rawcar_dataset = {'train': [], 'valid': []}
         print(global_variable.yellow)
+        print('use png_dataset: %s' % path)
         print('\033[1;34mLoading png images')
 
         for mode in self.rawcar_dataset:
@@ -217,6 +220,7 @@ class RenderCar():
 
         print('Loading %d png images is done' % len(
             self.rawcar_dataset['train']))
+        print(global_variable.reset_color)
 
     def load_pascal_images(self):
         # -------------------- set pascal path-------------------- #
@@ -253,8 +257,19 @@ class RenderCar():
                     self.pascal_dataset[mode].append(img_path)
         print('Loading %d pascal images is done' % len(
             self.pascal_dataset['train']))
+        print(global_variable.reset_color)
 
     def _render_pascal(self, mode, r1=1.0):
+        '''
+        Parameters
+        ----------
+        mode: string
+          ['train', 'valid']
+        r1: resize ratio of height to width
+
+        Returns
+        ----------
+        '''
         n = np.random.randint(len(self.pascal_dataset[mode]))
         if self.pre_load:
             pil_img, box, img_cls, label_distribution = \
@@ -317,6 +332,16 @@ class RenderCar():
                 r, img_cls, label_distribution)
 
     def _render_png(self, mode, r1=1.0):
+        '''
+        Parameters
+        ----------
+        mode: string
+          ['train', 'valid']
+        r1: resize ratio of height to width
+
+        Returns
+        ----------
+        '''
         n = np.random.randint(len(self.rawcar_dataset[mode]))
 
         if False:  # self.pre_load:
@@ -352,6 +377,29 @@ class RenderCar():
                 r, img_cls, label_distribution)
 
     def _resize(self, pil_img, min_scale, max_scale, r1):
+        '''
+        Parameters
+        ----------
+        pil_img: pil image
+          input image
+        min_scale: float
+          minimum ratio of resize
+        max_scale: float
+          maximum ratio of resize
+        r1: float
+          resize ratio of height to width
+
+        Returns
+        ----------
+        resize: float
+          resize ratio
+        resize_w: float
+          width of image
+        resize_h: float
+          height of image
+        pil_img: pil image
+          input image
+        '''
         resize = np.random.uniform(low=min_scale, high=max_scale)
         resize_w = resize * pil_img.size[0]
         resize_h = resize * pil_img.size[1] * r1

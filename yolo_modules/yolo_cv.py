@@ -40,7 +40,7 @@ class RadarProb():
         prob = _numpy_softmax(prob)
         prob = prob * confidence / max(prob)
         vecs = self.classes_xyz * np.expand_dims(prob, axis=1)
-        print(np.sum(vecs, axis=0))
+        # print(np.sum(vecs, axis=0))
 
         num_angs = [24, 21, 17, 12]
         c = 0
@@ -183,6 +183,9 @@ def _numpy_softmax(x):
 
 
 def cv2_add_bbox(im, b, color_idx, use_r=True):
+    '''
+    b: [score, y, x, h, w, rotate, .....]
+    '''
     # r = -b[5]
     r = 0 if not use_r else -b[5]
 
@@ -195,10 +198,12 @@ def cv2_add_bbox(im, b, color_idx, use_r=True):
         [-w*math.cos(r)/2 - h*math.sin(r)/2, -w*math.sin(r)/2 + h*math.cos(r)/2],
         [-w*math.cos(r)/2 + h*math.sin(r)/2, -w*math.sin(r)/2 - h*math.cos(r)/2],
         [ w*math.cos(r)/2 + h*math.sin(r)/2,  w*math.sin(r)/2 - h*math.cos(r)/2]]])
-    s = np.array([b[2], b[1]])*[im_w, im_h]
+    s = np.array([b[2], b[1]]) * [im_w, im_h]
     a = (a + s).astype(int)
     c = np.array(_color[color_idx])
     cv2.polylines(im, a, 1, c, 2)
+
+
     return im
 
 

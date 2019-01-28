@@ -8,7 +8,6 @@
  * Initial code taken from http://dev.px4.io/ros-mavros-offboard.html
  */
 
-
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -122,9 +121,9 @@ int main(int argc, char **argv)
     geometry_msgs::PoseStamped pose;
     pose.pose.position.x = 0;
     pose.pose.position.y = 0;
-    pose.pose.position.z = 0.8;
-    pose.pose.orientation.z = -0.7071;
-    pose.pose.orientation.w = 0.7071;
+    pose.pose.position.z = 1.0;
+    pose.pose.orientation.z = 0.0;
+    pose.pose.orientation.w = 1.0;
     
     geometry_msgs::TwistStamped no_cmd_twist;
     no_cmd_twist.twist.linear.x = 0;
@@ -152,8 +151,8 @@ int main(int argc, char **argv)
             pose.pose.position.x = 0;
             pose.pose.position.y = 0;
             pose.pose.position.z = 0.8;
-            pose.pose.orientation.z = -0.7071;
-            pose.pose.orientation.w = 0.7071;
+            pose.pose.orientation.z = 0.0;
+            pose.pose.orientation.w = 1.0;
         }
 
 	   else{

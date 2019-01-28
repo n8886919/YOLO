@@ -255,6 +255,7 @@ def test_inference_rate(net, shape, cycles=100, ctx=mxnet.gpu(0)):
 
     print(global_variable.yellow)
     print('Inference Rate = %.2f' % (cycles/float(time.time() - t)))
+    print(global_variable.reset_color)
 
 
 # -------------------- other -------------------- #

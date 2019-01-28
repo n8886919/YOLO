@@ -20,7 +20,7 @@ from cv_bridge import CvBridge, CvBridgeError
 from yolo_modules import global_variable
 
 AXIS = 'xyzw'
-PID = 'pid'
+PID = 'p'  # 'pid'
 
 with open('ibvs_parameter.yaml') as f:
     IBVS_PARAMETER = yaml.load(f)
@@ -32,7 +32,7 @@ class PID_GUI(object):
 
         self.win = tk.Tk()
         self.win.title('PID Controller')
-        self.win.geometry('300x450')
+        self.win.geometry('310x550')
 
         button_place = IBVS_PARAMETER['button_place']
 
@@ -52,6 +52,12 @@ class PID_GUI(object):
             from_=0, to=180, orient=tk.HORIZONTAL,
             length=300, tickinterval=20, resolution=1, sliderlength=20
             ).place(x=0, y=250)
+
+        tk.Scale(
+            self.win, label='Desire Distance', command=self._set_distance,
+            from_=1, to=2, orient=tk.HORIZONTAL,
+            length=300, tickinterval=0.25, resolution=0.01, sliderlength=20
+            ).place(x=0, y=350)
 
         apply_gain_botton = tk.Button(self.win, text="apply", width=15, height=2, command=self._apply)
 
@@ -73,10 +79,10 @@ class PID_GUI(object):
             self.win, text="land", variable=self.land,
             onvalue=True, offvalue=False, command=self._land)
 
-        start_IBVS_botton.place(x=200, y=330, width=100, height=50)
-        fix_pose_botton.place(x=100, y=330, width=100, height=50)
-        landing_botton.place(x=0, y=330, width=100, height=50)
-        apply_gain_botton.place(x=100, y=400, width=100)
+        start_IBVS_botton.place(x=200, y=430, width=100, height=50)
+        fix_pose_botton.place(x=100, y=430, width=100, height=50)
+        landing_botton.place(x=0, y=430, width=100, height=50)
+        apply_gain_botton.place(x=100, y=500, width=100)
 
         self._apply()
 
@@ -95,7 +101,14 @@ class PID_GUI(object):
 
         azi_msgs = Float32()
         azi_msgs.data = self.ibvs_controller.desire_azimuth
-        self.ibvs_desire_azi_pub.publish(azi_msgs)
+        self.ibvs_controller.ibvs_desire_azi_pub.publish(azi_msgs)
+
+    def _set_distance(self, v):
+        self.ibvs_controller.desire_distance = float(v)
+
+        dis_msgs = Float32()
+        dis_msgs.data = self.ibvs_controller.desire_distance
+        self.ibvs_controller.ibvs_desire_dis_pub.publish(dis_msgs)
 
     def _apply(self):
         print(global_variable.green)
@@ -130,6 +143,7 @@ class IBVS_Controller():
                 self.gain[ax+pid] = self.gain_default[ax+pid]
 
         self.desire_azimuth = 0
+        self.desire_distance = 0
         self.loss_target_counter = 0
 
         self._init_ros()
@@ -149,6 +163,10 @@ class IBVS_Controller():
 
         self.ibvs_desire_azi_pub = rospy.Publisher(
             IBVS_PARAMETER['DESIRE_AZI_TOPIC'],
+            Float32, queue_size=1)
+
+        self.ibvs_desire_dis_pub = rospy.Publisher(
+            IBVS_PARAMETER['DESIRE_DIS_TOPIC'],
             Float32, queue_size=1)
 
         self.ibvs_vel_pub = rospy.Publisher(
@@ -247,7 +265,7 @@ class IBVS_Controller():
 
             print(box[5])
             if box[5] > 0:
-                errx = box[5] - 1.0
+                errx = box[5] - self.desire_distance
             else:
                 print('No Depth Infomation')
                 errx = 0.18 - box[3] * box[4]

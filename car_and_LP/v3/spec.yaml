@@ -24,7 +24,7 @@
   record_step: 5000,
   valid_step: 1000, 
   batch_size: 30,
-  train_counter_start: 30000,
+  train_counter_start: 0,
   
   loss_name: 
     [
@@ -33,7 +33,7 @@
     ],
   scale: 
     {
-      'score': 0.1, 'box_yx': 0.01, 'box_hw': 10.0, 'rotate': 0.0, 'class': 0.3,
+      'score': 0.1, 'box_yx': 0.01, 'box_hw': 10.0, 'rotate': 0.0, 'class': 0.1,
       'LP_score': 0.1, 'LP_xy': 10.0, 'LP_z': 1.0, 'LP_r': 0.1, 'LP_class': 0.0
     },
   learning_rate: 0.001,
