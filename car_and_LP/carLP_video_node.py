@@ -22,8 +22,6 @@ import car.utils
 from car.video_node import Video
 from YOLO import YOLO
 
-# DEPTH_TOPIC = '/zed/depth/depth_registered'
-DEPTH_TOPIC = '/drone/camera/depth/image_raw'
 verbose = 0
 save_video_size = None
 
@@ -31,8 +29,8 @@ save_video_size = None
 def main():
     args = car.utils.video_Parser()
     video = CarLPVideo(args)
-    #video()
-    video.run2_result()
+    video()  # Two thread
+    #video.run2_result()
 
 
 class CarLPVideo(Video):

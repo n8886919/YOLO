@@ -26,10 +26,14 @@ from YOLO import *
 import numpy as np
 from os.path import split
 
-# DEPTH_TOPIC = '/zed/depth/depth_registered'
-DEPTH_TOPIC = '/drone/camera/depth/image_raw'
+DEPTH_TOPIC = '/zed/depth/depth_registered'
+# DEPTH_TOPIC = '/drone/camera/depth/image_raw'
 verbose = 0
 save_video_size = None
+
+_step = 360 / 24
+cos_offset = np.array([math.cos(x*math.pi/180) for x in range(0, 360, _step)])
+sin_offset = np.array([math.sin(x*math.pi/180) for x in range(0, 360, _step)])
 
 
 def main():
@@ -151,6 +155,10 @@ class Video(object):
     def run2_result(self):
         import matplotlib.pyplot as plt
         path1 = "/media/nolan/SSD1/YOLO_backup/freiburg_static_cars_52_v1.1/result/annotations"
+        plot_path = os.path.join(path1, 'plot')
+        if not os.path.exists(plot_path):
+            os.makedirs(plot_path)
+
         for annot in os.listdir(path1):
             fig = plt.figure()
             ax = fig.add_subplot(1, 1, 1)
@@ -164,6 +172,7 @@ class Video(object):
                 lines = f.readlines()
 
             for line in lines:
+                print(line.split(' ')[0])
                 iou = float(line.split(' ')[1])
                 if iou < 0.5:
                     continue
@@ -171,6 +180,7 @@ class Video(object):
                 ious.append(iou)
                 x1 = float(line.split(' ')[2])
                 x2 = float(line.split(' ')[3])
+                print(x1, x2)
                 err = x1-x2
                 x1s.append(x1)
                 x2s.append(x2)
@@ -180,15 +190,17 @@ class Video(object):
                 elif err > 180:
                     err -= 360
                 err_squares.append(err**2)
-
+            '''
             ax.plot(x1s, 'go-')
             ax.plot(x2s, 'ro-')
 
-            save_path = os.path.join(path1, num + '_pic.png')
+            save_path = os.path.join(plot_path, num + '.png')
             fig.savefig(save_path)
+            '''
             iou = sum(ious) / float(len(ious))
             azi_L2_err = math.sqrt(sum(err_squares) / float(len(err_squares)))
             print('car' + num + ', iou: %d, mean azi: %d' % (iou, azi_L2_err))
+            break
 
     def run2(self):
         image_w = 960.
@@ -279,6 +291,14 @@ class Video(object):
             if hasattr(self, 'net_img_time') and verbose:
                 now = rospy.get_rostime()
                 print(('cam to pub delay: ', (now - self.net_img_time).to_sec()))
+
+            #
+            x = pred_car[0, -24:]
+            prob = np.exp(x)/np.sum(np.exp(x), axis=0)
+            c = sum(cos_offset*prob)
+            s = sum(sin_offset*prob)
+            vec_ang = math.atan2(s, c)
+            pred_car[0, 5] = vec_ang
 
             self.ros_publish_array(self.car_pub, self.mat_car, pred_car[0])
             self.visualize(pred_car, net_img)

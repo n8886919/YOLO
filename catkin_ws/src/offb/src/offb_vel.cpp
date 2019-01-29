@@ -131,6 +131,12 @@ int main(int argc, char **argv)
     no_cmd_twist.twist.linear.z = 0;
     no_cmd_twist.twist.angular.z = 0.0;
 
+    geometry_msgs::TwistStamped land_cmd_twist;
+    land_cmd_twist.twist.linear.x = 0;
+    land_cmd_twist.twist.linear.y = 0;
+    land_cmd_twist.twist.linear.z = -0.1;
+    land_cmd_twist.twist.angular.z = 0.0;
+
     mavros_msgs::SetMode offb_set_mode;
     offb_set_mode.request.custom_mode = "OFFBOARD";
 
@@ -142,7 +148,14 @@ int main(int argc, char **argv)
     while (ros::ok()) {
 
         if (land){
-            ROS_INFO("LLLLLLLLAAAAAAANNNNNNNDDDDDDDDD!!!!!!!!!");
+            for (int i=0; i<=100; i++) {
+                ROS_INFO("LLLLLLLLAAAAAAANNNNNNNDDDDDDDDD!!!!!!!!!");
+                local_vel_pub.publish(land_cmd_twist);
+                ros::spinOnce();
+                rate.sleep();
+            }
+
+            ROS_INFO("Land Done");
             offb_set_mode.request.custom_mode = "MANUAL";
             set_mode_client.call(offb_set_mode);
             arm_cmd.request.value = false;
