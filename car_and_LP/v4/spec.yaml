@@ -1,0 +1,59 @@
+{
+  use_fp16: false,
+  size: [320, 512],
+  layers: [1, 4, 4, 8, 8, 4],
+  channels: [16, 32, 64, 128, 256, 512, 512],
+  slice_point: [1, 3, 5, 6, 30],
+  all_anchors: 
+    [
+      [[0.2216, 0.1552], [0.2144, 0.2408], [0.2825, 0.3456]], 
+      [[0.3959, 0.2706], [0.3703, 0.4351], [0.5708, 0.4278]],
+      [[0.4345, 0.6063], [0.5584, 0.7174], [0.7448, 0.6772]]
+    ], # (3, 3, 2)
+
+  classes:
+    [
+      [0.00, 0.00],    [15.00, 0.00],   [30.00, 0.00],   [45.00, 0.00],   [60.00, 0.00],   #4
+      [75.00, 0.00],   [90.00, 0.00],   [105.00, 0.00],  [120.00, 0.00],  [135.00, 0.00],  #9
+      [150.00, 0.00],  [165.00, 0.00],  [180.00, 0.00],  [195.00, 0.00],  [210.00, 0.00],  #14
+      [225.00, 0.00],  [240.00, 0.00],  [255.00, 0.00],  [270.00, 0.00],  [285.00, 0.00],  #19
+      [300.00, 0.00],  [315.00, 0.00],  [330.00, 0.00],  [345.00, 0.00]                    #24
+    ],
+
+  ############ Train ############
+  record_step: 5000,
+  valid_step: 1000, 
+  batch_size: 30,
+  train_counter_start: 0,
+  
+  loss_name: 
+    [
+      'score', 'box_yx', 'box_hw', 'rotate', 'class',
+      'LP_score', 'LP_xy', 'LP_z', 'LP_r', 'LP_class'
+    ],
+  scale: 
+    {
+      'score': 0.1, 'box_yx': 0.01, 'box_hw': 10.0, 'rotate': 0.0, 'class': 0.1,
+      'LP_score': 0.1, 'LP_xy': 10.0, 'LP_z': 1.0, 'LP_r': 0.1, 'LP_class': 0.0
+    },
+  learning_rate: 0.001,
+  positive_weight: 1.0,
+  negative_weight: 0.1,
+  dataset: 'c200_noele',
+
+  ############ Licence Plate ############
+  LP_slice_point: [1, 3, 4, 7, 10],
+  LP_positive_weight: 1.0,
+  LP_negative_weight: 0.1,
+  LP_r_max: [45, 60, 45],  # camera coordinate x, y, z
+  LP_num_class: 3,
+
+  ############ Validation ############
+  pub_img: '/YOLO/img',
+  pub_box: '/YOLO/box',
+
+  pub_clipped_LP: /YOLO/clipped_LP,
+  pub_LP: '/YOLO/LP',
+
+  iou_bs: 30,
+}

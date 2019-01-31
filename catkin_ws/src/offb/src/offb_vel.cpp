@@ -7,7 +7,6 @@
  *
  * Initial code taken from http://dev.px4.io/ros-mavros-offboard.html
  */
-
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -17,7 +16,6 @@
 #include <mavros_msgs/SetMode.h>
 #include <mavros_msgs/State.h>
 
-//#include <iostream.h>
 #include <cstdio>
 #include <unistd.h>
 #include <termios.h>
@@ -51,8 +49,7 @@ void land_cb(const std_msgs::Bool::ConstPtr& msg) {
  *
  * @return the character pressed.
  */
-char getch()
-{
+char getch(){
     int flags = fcntl(0, F_GETFL, 0);
     fcntl(0, F_SETFL, flags | O_NONBLOCK);
 
@@ -83,8 +80,7 @@ char getch()
 /*
  * Call main using `rosrun offb offb_main`.
  */
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     ros::init(argc, argv, "offb_main");
     ros::NodeHandle nh;
 
@@ -176,8 +172,8 @@ int main(int argc, char **argv)
                     ROS_INFO("Offboard enabled");
                 }
                 last_request = ros::Time::now();
-            } else {
-
+            }
+            else {
                 if (!current_state.armed &&
                         (ros::Time::now() - last_request > ros::Duration(5.0))) {
                     if( arming_client.call(arm_cmd) &&
@@ -243,6 +239,5 @@ int main(int argc, char **argv)
         ros::spinOnce();
         rate.sleep();
     }
-
     return 0;
 }

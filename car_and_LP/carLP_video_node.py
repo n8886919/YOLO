@@ -30,7 +30,6 @@ def main():
     args = car.utils.video_Parser()
     video = CarLPVideo(args)
     video()  # Two thread
-    #video.run2_result()
 
 
 class CarLPVideo(Video):
@@ -40,8 +39,8 @@ class CarLPVideo(Video):
         self.project_rect_6d = licence_plate_render.ProjectRectangle6D(
             int(380*1.1), int(160*1.1))
 
-        self.car_threshold = 0.5
-        self.LP_threshold = 0.5
+        self.car_threshold = 0.1
+        self.LP_threshold = 0.1
         self._init(args)
 
         # -------------------- init LP -------------------- #

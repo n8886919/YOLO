@@ -152,153 +152,26 @@ class Video(object):
             net_out = self.yolo.net.forward(is_train=False, data=nd_img)
             self.process(net_img, net_out, net_dep)
 
-    def run2_result(self):
-        import matplotlib.pyplot as plt
-        path1 = "/media/nolan/SSD1/YOLO_backup/freiburg_static_cars_52_v1.1/result/annotations"
-        plot_path = os.path.join(path1, 'plot')
-        if not os.path.exists(plot_path):
-            os.makedirs(plot_path)
-
-        for annot in os.listdir(path1):
-            fig = plt.figure()
-            ax = fig.add_subplot(1, 1, 1)
-            num = annot.split('_')[0]
-            ious = []
-            err_squares = []
-            x1s = []
-            x2s = []
-            path2 = os.path.join(path1, annot)
-            with open(path2, 'r') as f:
-                lines = f.readlines()
-
-            for line in lines:
-                print(line.split(' ')[0])
-                iou = float(line.split(' ')[1])
-                if iou < 0.5:
-                    continue
-
-                ious.append(iou)
-                x1 = float(line.split(' ')[2])
-                x2 = float(line.split(' ')[3])
-                print(x1, x2)
-                err = x1-x2
-                x1s.append(x1)
-                x2s.append(x2)
-
-                if err < -180:
-                    err += 360
-                elif err > 180:
-                    err -= 360
-                err_squares.append(err**2)
-            '''
-            ax.plot(x1s, 'go-')
-            ax.plot(x2s, 'ro-')
-
-            save_path = os.path.join(plot_path, num + '.png')
-            fig.savefig(save_path)
-            '''
-            iou = sum(ious) / float(len(ious))
-            azi_L2_err = math.sqrt(sum(err_squares) / float(len(err_squares)))
-            print('car' + num + ', iou: %d, mean azi: %d' % (iou, azi_L2_err))
-            break
-
-    def run2(self):
-        image_w = 960.
-        image_h = 540.
-        x = np.arange(53)
-        index = [0, 6, 20, 23, 31, 36]
-        new_x = np.delete(x, index)
-
-        mx_resize = mxnet.image.ForceResizeAug(tuple(self.yolo.size[::-1]))
-
-        path1 = "/media/nolan/SSD1/YOLO_backup/freiburg_static_cars_52_v1.1"
-        for i in new_x:
-            save_img_path = os.path.join(path1, "result", "car_%d" % i)
-            if not os.path.exists(save_img_path):
-                os.makedirs(save_img_path)
-
-            save_txt_path = os.path.join(path1, 'result/annotations')
-            if not os.path.exists(save_txt_path):
-                os.makedirs(save_txt_path)
-
-            txt_path = os.path.join(path1, "annotations", "%d_annot.txt" % i)
-            with open(txt_path, 'r') as f:
-                all_lines = f.readlines()
-
-            for line_i, line in enumerate(all_lines):
-                img_name = line.split('\t')[0].split('.')[0] + '.png'
-                img_path = os.path.join(path1, img_name)
-                save_img = os.path.join(save_img_path, img_name.split('/')[-1])
-                img = cv2.imread(img_path)
-
-                # -------------------- Prediction -------------------- #
-                nd_img = yolo_gluon.cv_img_2_ndarray(img, self.ctx[0], mxnet_resize=mx_resize)
-                net_out = self.yolo.net.forward(is_train=False, data=nd_img)
-                pred_car = self.yolo.predict(net_out[:3])
-                pred_car[0, 5] = -1  # (1, 80)
-                Cout = pred_car[0]
-
-                left_ = (Cout[2] - 0.5*Cout[4]) * image_w
-                up_ = (Cout[1] - 0.5*Cout[3]) * image_h
-                right_ = (Cout[2] + 0.5*Cout[4]) * image_w
-                down_ = (Cout[1] + 0.5*Cout[3]) * image_h
-
-                #self.radar_prob.plot(Cout[0], Cout[-self.yolo.num_class:])
-                vec_ang, vec_rad, prob = self.radar_prob.cls2ang(Cout[0], Cout[-self.yolo.num_class:])
-
-                # -------------------- Ground Truth -------------------- #
-                box_para = np.fromstring(line.split('\t')[1], dtype='float32', sep=' ')
-                left, up, right, down = box_para
-                h = (down - up)/image_h
-                w = (right - left)/image_w
-                y = (down + up)/2/image_h
-                x = (right + left)/2/image_w
-                boxA = [0, y, x, h, w, 0]
-                # print('boxA=', boxA)
-
-                azi_label = int(line.split('\t')[2]) - 90
-                azi_label = azi_label - 360 if azi_label > 180 else azi_label
-
-                inter = (min(right, right_)-max(left, left_)) * (min(down, down_)-max(up, up_))
-                a1 = (right-left)*(down-up)
-                a2 = (right_-left_)*(down_-up_)
-                iou = (inter) / (a1 + a2 - inter)
-
-                save_txt = os.path.join(save_txt_path, '%d_annot' % i)
-                with open(save_txt, 'a') as f:
-                    f.write('%s %f %f %f %f\n' % (img_name, iou, azi_label, vec_ang*180/math.pi, vec_rad))
-
-                '''
-                yolo_cv.cv2_add_bbox(img, Cout, 3, use_r=False)
-                yolo_cv.cv2_add_bbox(img, boxA, 4, use_r=False)
-
-                cv2.imshow('img', img)
-                cv2.waitKey(1)
-                cv2.imwrite(save_img, img)
-                a = raw_input()
-                '''
-
     def process(self, net_img, net_out, net_dep):
             pred_car = self.yolo.predict(net_out[:3])
-
+            '''
             if net_dep:  # net_dep != None
                 x = int(net_dep.shape[1] * pred_car[0, 2])
                 y = int(net_dep.shape[0] * pred_car[0, 1])
                 pred_car[0, 5] = net_dep[y, x]
             else:
                 pred_car[0, 5] = -1
+            '''
+            x = pred_car[0, -24:]
+            prob = np.exp(x) / np.sum(np.exp(x), axis=0)
+            c = sum(cos_offset * prob)
+            s = sum(sin_offset * prob)
+            vec_ang = math.atan2(s, c)
+            pred_car[0, 5] = vec_ang
 
             if hasattr(self, 'net_img_time') and verbose:
                 now = rospy.get_rostime()
                 print(('cam to pub delay: ', (now - self.net_img_time).to_sec()))
-
-            #
-            x = pred_car[0, -24:]
-            prob = np.exp(x)/np.sum(np.exp(x), axis=0)
-            c = sum(cos_offset*prob)
-            s = sum(sin_offset*prob)
-            vec_ang = math.atan2(s, c)
-            pred_car[0, 5] = vec_ang
 
             self.ros_publish_array(self.car_pub, self.mat_car, pred_car[0])
             self.visualize(pred_car, net_img)

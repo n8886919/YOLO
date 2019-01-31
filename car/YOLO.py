@@ -16,20 +16,26 @@ from yolo_modules import global_variable
 from utils import *
 from render_car import *
 
+
 render_thread_pre_load = False
 export_onnx = False
+freiburg_path = ('/media/nolan/SSD1/YOLO_backup/'
+                 'freiburg_static_cars_52_v1.1')
+
+available_mode = ['train',
+                  'valid',
+                  'export',
+                  'render_and_train',
+                  'kmean',
+                  # 'pr',
+                  'valid_Nima',
+                  'valid_Nima_plot'
+                  ]
 
 
 def main():
     args = yolo_Parser()
     yolo = YOLO(args)
-
-    available_mode = ['train',
-                      'valid',
-                      'export',
-                      'render_and_train',
-                      'kmean',
-                      'pr']
 
     assert args.mode in available_mode, \
         'Available Modes Are {}'.format(available_mode)
@@ -58,9 +64,11 @@ class YOLO(object):
         self._init_area()
         self._init_syxhw()
 
+        self.version = args.version
         # -------------------- Load "Executor" !!! -------------------- #
         if (args.mode == 'video' or
-           args.mode == 'valid'):
+           args.mode == 'valid' or
+           args.mode == 'valid_Nima'):
 
             self.net = yolo_gluon.init_executor(
                 self.export_folder,
@@ -73,7 +81,6 @@ class YOLO(object):
               args.mode == 'train' or
               args.mode == 'render_and_train'):
 
-            self.version = args.version
             self.record = args.record
             self._init_net(spec, args.weight)
 
@@ -695,6 +702,160 @@ class YOLO(object):
                 'list  element should be mxnet.ndarray')
             x[i] = x[i].astype('float32', copy=False)
         return x
+
+    def valid_Nima(self):
+        '''
+        compare with "Unsupervised Generation of a Viewpoint"
+        Annotated Car Dataset from Videos
+        -path: /media/nolan/SSD1/YOLO_backup/freiburg_static_cars_52_v1.1
+          |-annotations (d)
+            |-txt_path (d)
+          |-all car folders (d)
+          |-result_path (v)
+            |-all car folders with box (v)
+              |-img_path (v)
+            |-annotations (v)
+              |-save_txt_path (v)
+              |-plot (p)
+                |-all car azi compare (p)
+
+        d: download from "Unsupervised Generation of a Viewpoint"
+        v: generate from valid_Nima
+        o: generate from valid_Nima_plot
+        '''
+        import cv2
+
+        image_w = 960.
+        image_h = 540.
+
+        mx_resize = mxnet.image.ForceResizeAug(tuple(self.size[::-1]))
+        radar_prob = yolo_cv.RadarProb(self.num_class, self.classes)
+
+        x = np.arange(53)
+        x = np.delete(x, [0, 6, 20, 23, 31, 36])
+        for i in x:
+            result_path = os.path.join(freiburg_path, "result_%s" % self.version)
+            save_img_path = os.path.join(result_path, "car_%d" % i)
+            if not os.path.exists(save_img_path):
+                os.makedirs(save_img_path)
+
+            save_txt_path = os.path.join(result_path, 'annotations')
+            if not os.path.exists(save_txt_path):
+                os.makedirs(save_txt_path)
+
+            txt_path = os.path.join(freiburg_path, "annotations", "%d_annot.txt" % i)
+            with open(txt_path, 'r') as f:
+                all_lines = f.readlines()
+
+            for line_i, line in enumerate(all_lines):
+                img_name = line.split('\t')[0].split('.')[0] + '.png'
+                img_path = os.path.join(freiburg_path, img_name)
+                save_img = os.path.join(save_img_path, img_name.split('/')[-1])
+                img = cv2.imread(img_path)
+
+                # -------------------- Prediction -------------------- #
+                nd_img = yolo_gluon.cv_img_2_ndarray(img, self.ctx[0], mxnet_resize=mx_resize)
+                net_out = self.net.forward(is_train=False, data=nd_img)
+                pred_car = self.predict(net_out[:3])
+                pred_car[0, 5] = -1  # (1, 80)
+                Cout = pred_car[0]
+
+                left_ = (Cout[2] - 0.5*Cout[4]) * image_w
+                up_ = (Cout[1] - 0.5*Cout[3]) * image_h
+                right_ = (Cout[2] + 0.5*Cout[4]) * image_w
+                down_ = (Cout[1] + 0.5*Cout[3]) * image_h
+
+                vec_ang, vec_rad, prob = radar_prob.cls2ang(Cout[0], Cout[-self.num_class:])
+
+                # -------------------- Ground Truth -------------------- #
+                box_para = np.fromstring(line.split('\t')[1], dtype='float32', sep=' ')
+                left, up, right, down = box_para
+                h = (down - up) / image_h
+                w = (right - left) / image_w
+                y = (down + up) / 2 / image_h
+                x = (right + left) / 2 / image_w
+                boxA = [0, y, x, h, w, 0]
+
+                azi_label = int(line.split('\t')[2]) - 90
+                azi_label = azi_label - 360 if azi_label > 180 else azi_label
+
+                inter = (min(right, right_)-max(left, left_)) * (min(down, down_)-max(up, up_))
+                a1 = (right-left)*(down-up)
+                a2 = (right_-left_)*(down_-up_)
+                iou = (inter) / (a1 + a2 - inter)
+
+                save_txt = os.path.join(save_txt_path, '%d_annot' % i)
+                with open(save_txt, 'a') as f:
+                    f.write('%s %f %f %f %f\n' % (img_name, iou, azi_label, vec_ang*180/math.pi, vec_rad))
+
+                yolo_cv.cv2_add_bbox(img, Cout, 3, use_r=False)
+                yolo_cv.cv2_add_bbox(img, boxA, 4, use_r=False)
+
+                cv2.imshow('img', img)
+                cv2.waitKey(1)
+                cv2.imwrite(save_img, img)
+                #a = raw_input()
+
+    def valid_Nima_plot(self):
+        import matplotlib.pyplot as plt
+        filter_index = [14, 17]
+        path = (freiburg_path + '/result_v2/annotations')
+        plot_path = os.path.join(path, 'plot')
+        if not os.path.exists(plot_path):
+            os.makedirs(plot_path)
+
+        all_car_iou = []
+        all_car_azi = []
+        for annot in os.listdir(path):  # all car
+            if annot == 'plot':
+                continue
+
+            fig = plt.figure()
+            ax = fig.add_subplot(1, 1, 1)
+            num = annot.split('_')[0]
+            if num in filter_index:
+                continue
+
+            ious, err_squares = [], []
+            x1s, x2s = [], []
+
+            path2 = os.path.join(path, annot)
+            with open(path2, 'r') as f:
+                lines = f.readlines()
+
+            for line in lines:  # all images of the car
+                iou = float(line.split(' ')[1])
+                if iou < 0.5:
+                    continue
+
+                ious.append(iou)
+                x1 = float(line.split(' ')[2])
+                x2 = float(line.split(' ')[3])
+                err = x1-x2
+                x1s.append(x1)
+                x2s.append(x2)
+
+                if err < -180:
+                    err += 360
+                elif err > 180:
+                    err -= 360
+                err_squares.append(err**2)
+
+            ax.plot(x1s, 'go-')
+            ax.plot(x2s, 'ro-')
+
+            save_path = os.path.join(plot_path, num + '.png')
+            fig.savefig(save_path)
+
+            iou = sum(ious) / float(len(ious))
+            all_car_iou.append(iou)
+            azi_L2_err = math.sqrt(sum(err_squares) / float(len(err_squares)))
+            all_car_azi.append(azi_L2_err)
+            print('car' + num + ', iou: %f, mean azi: %f' % (iou, azi_L2_err))
+            #break
+
+        print(sum(all_car_iou)/float(len(all_car_iou)))
+        print(sum(all_car_azi)/float(len(all_car_azi)))
 
 
 '''

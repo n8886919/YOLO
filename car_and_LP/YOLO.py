@@ -38,14 +38,7 @@ def main():
     args = utils.yolo_Parser()
     yolo = YOLO(args)
 
-    available_mode = ['train',
-                      'valid',
-                      'export',
-                      'render_and_train',
-                      'kmean',
-                      'pr']
-
-    assert args.mode in available_mode, \
+    assert args.mode in car_YOLO.available_mode, \
         'Available Modes Are {}'.format(available_mode)
 
     exec "yolo.%s()" % args.mode
@@ -101,16 +94,18 @@ class CarLPNet(basic_yolo.BasicYOLONet):
 class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
     def __init__(self, args):
         car_YOLO.YOLO.__init__(self, args)
-        pprint(self.classes)
+        # pprint(self.classes)
 
     def _init_net(self, spec, weight):
         # Do not set num_sync_bn_devices=len(self.ctx)
         # because No conversion function for contrib_SyncBatchNorm yet.
         # (ONNX)
         # self.net = CarLPNet(spec, num_sync_bn_devices=len(self.cx))
+
         self.net = CarLPNet(spec, num_sync_bn_devices=-1)
         self.num_downsample = len(spec['layers']) - 2  # For LP training
-        #self.backup_dir = os.path.join(self.version, 'backup')
+
+        # self.backup_dir = os.path.join(self.version, 'backup')
         self.backup_dir = os.path.join(
             '/media/nolan/SSD1/YOLO_backup/car_and_LP',
             self.version,
@@ -393,78 +388,6 @@ class YOLO(car_YOLO.YOLO, LP_detection.LicencePlateDetectioin):
             onnx=False,
             fp16=False)
 
-
-'''
-class Benchmark():
-    def __init__(self, logdir, car_renderer):
-        self.logdir = logdir
-        self.car_renderer = car_renderer
-        self.iou_step = 0
-
-    def pr_curve(self):
-
-        from mxboard import SummaryWriter
-        sw = SummaryWriter(logdir=NN + '/logs/PR_Curve', flush_secs=5)
-
-        path = '/media/nolan/9fc64877-3935-46df-9ad0-c601733f5888/HP_31/'
-        BG_iter = image.ImageIter(100, (3, self.size[0], self.size[1]),
-            path_imgrec=path+'sun2012_train.rec',
-            path_imgidx=path+'sun2012_train.idx',
-            shuffle=True, pca_noise=0,
-            brightness=0.5, saturation=0.5, contrast=0.5, hue=1.0,
-            rand_crop=True, rand_resize=True, rand_mirror=True, inter_method=10)
-
-        car_renderer = RenderCar(100, self.size[0], self.size[1], ctx[0])
-        predictions = [] #[[]*24,[]*24,[]*24],............]
-        labels = [] #[1,5,25,3,5,12,22,.............]
-
-        for BG in BG_iter:
-            BG = BG.data[0].as_in_context(ctx[0])
-            img_batch, label_batch = car_renderer.render_pascal(BG, 'valid')
-
-            C_pred = self.get_feature(img_batch)
-
-
-            for i in range(100):
-                C_score = C_pred[0][i]
-                C_1 = C_score.reshape(-1).argmax(axis=0).reshape(-1)
-
-                Cout = C_pred[3][i].reshape((-1, self.num_class))
-                Cout = softmax(Cout[C_1][0].asnumpy())
-
-                predictions.append(Cout)
-                labels.append(int(label_batch[i,0,0].asnumpy()))
-
-            if len(labels)>(3000-1): break
-
-        labels = np.array(labels)
-        predictions = np.array(predictions)
-
-
-        for i in range(self.num_class):
-            if i == 0:
-                j = 23
-                k = 1
-            elif i == 23:
-                j = 22
-                k = 0
-            else:
-                j = i - 1
-                k = i + 1
-            label = ((labels==i)+(labels==j)+(labels==k)).astype(int)
-
-            predict = predictions[:,i] + predictions[:,j] + predictions[:,k]
-            label = nd.array(label)
-            predict = nd.array(predict)
-
-            sw.add_pr_curve('%d'%i, label, predict, 100, global_step=0)
-
-        predictions = nd.uniform(low=0, high=1, shape=(100,), dtype=np.float32)
-        labels = nd.uniform(low=0, high=2, shape=(100,), dtype=np.float32).astype(np.int32)
-        print(labels)
-        print(predictions)
-        sw1.add_pr_curve(tag='pseudo_pr_curve', predictions=predictions, labels=labels, num_thresholds=120)
-'''
 
 # -------------------- Main -------------------- #
 if __name__ == '__main__':

@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import os
 import time
+import matplotlib
 import matplotlib.pyplot as plt
 
 import rospy
@@ -25,6 +26,10 @@ from yolo_modules import licence_plate_render
 from yolo_modules import yolo_cv
 from yolo_modules import yolo_gluon
 from yolo_modules import global_variable
+
+alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+number = '2356789'
+save_counter = 0
 
 
 class OCRDenseNet(gluon.HybridBlock):
@@ -49,7 +54,7 @@ class OCRDenseNet(gluon.HybridBlock):
             for i, num_layers in enumerate(block_config):
                 self.features.add(_make_dense_block(num_layers, bn_size, growth_rate, dropout, i+1))
                 num_features = num_features + num_layers * growth_rate
-                print(num_features)
+
                 if i != len(block_config) - 1:
                     self.features.add(_make_transition(num_features // 2))
                     num_features = num_features // 2
@@ -138,11 +143,6 @@ def _image_callback(img):
     pub.publish(text)
 
 
-save_counter = 0
-alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
-number = '2356789'
-
-
 def cv2_show_OCR_result(img, score, text):
     global save_counter
     x = np.arange(8, 384, 16).reshape(-1, 1)
@@ -190,12 +190,8 @@ def predict(nd_img):
             print('\033[1;32m%s\033[0m(%.2f),' % (
                   cls_names[c], np.max(class_x[i])), end='')
             text = text + cls_names[c]
-    print()
     return score_x, text
 
-
-os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
-os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '1'
 
 # -------------------- Parser -------------------- #
 parser = argparse.ArgumentParser(prog="python YOLO.py")

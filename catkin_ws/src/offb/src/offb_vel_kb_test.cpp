@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
 	ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
   
 	//the setpoint publishing rate MUST be faster than 2Hz
-	ros::Rate rate(20);
+	ros::Rate rate(30);
 	ibvs_request_time = ros::Time::now();
 	// wait for FCU connection
 	while(ros::ok() && !current_state.connected){
@@ -103,6 +103,7 @@ int main(int argc, char **argv) {
             arm_cmd.request.value = false;
             arming_client.call(arm_cmd);
         }
+
         else {         
 		    if( current_state.mode != "OFFBOARD" &&
 			    (ros::Time::now() - last_request > ros::Duration(5.0))){
@@ -151,7 +152,9 @@ int main(int argc, char **argv) {
 		    }//if (c != EOF)
 		    switch (ctr_mode) {
 			    case 0:
-				    take_off();
+			    	KeyBoard_control(c);
+				    // Setting position may fail
+				    //take_off();
 				    break;
 			    case 1:
 				    KeyBoard_control(c);
@@ -182,9 +185,9 @@ void take_off() {
 	local_pos_pub.publish(p);
 	printf(CYN "SetP\t\tx:%.2f\t\ty:%.2f\t\tz:%.2f" RESET, p.pose.position.x, p.pose.position.y, p.pose.position.z);
 }
+
 void KeyBoard_control(int c) {
   static geometry_msgs::Twist ts;
-  ts.angular.z = desire_yaw - yaw; // Keep same direction
   switch (c) {  
     case 65:    // key up
       ts.linear.x = 0;
@@ -218,15 +221,16 @@ void KeyBoard_control(int c) {
       ts.linear.z = 0;
       break;
     case 113:    // key q
-      desire_yaw += 0.1;
+      ts.angular.z += 0.1;
       break;
     case 101:    // key e
-      desire_yaw -= 0.1;
+      ts.angular.z -= 0.1;
       break;
     case 32:    // key space
       ts.linear.x = 0;
       ts.linear.y = 0;
-      ts.linear.z = 0;    
+      ts.linear.z = 0;
+      ts.angular.z = 0; 
     default: 
       break;
     } // switch (c)

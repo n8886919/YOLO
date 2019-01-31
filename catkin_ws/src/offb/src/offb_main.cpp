@@ -7,8 +7,6 @@
  *
  * Initial code taken from http://dev.px4.io/ros-mavros-offboard.html
  */
-
-
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <mavros_msgs/CommandBool.h>
@@ -19,20 +17,12 @@
 #include <termios.h>
 #include <fcntl.h>
 
-
 mavros_msgs::State current_state;
 void state_cb(const mavros_msgs::State::ConstPtr& msg) {
     current_state = *msg;
 }
 
-/*
- * Taken from
- * http://stackoverflow.com/questions/421860/capture-characters-from-standard-input-without-waiting-for-enter-to-be-pressed
- *
- * @return the character pressed.
- */
-char getch()
-{
+char getch() {
     int flags = fcntl(0, F_GETFL, 0);
     fcntl(0, F_SETFL, flags | O_NONBLOCK);
 
@@ -59,12 +49,7 @@ char getch()
     return (buf);
 }
 
-
-/*
- * Call main using `rosrun offb offb_main`.
- */
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     ros::init(argc, argv, "offb_main");
     ros::NodeHandle nh;
 
