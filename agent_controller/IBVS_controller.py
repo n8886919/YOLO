@@ -12,7 +12,7 @@ from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float32
 from std_msgs.msg import Float32MultiArray
 from std_msgs.msg import MultiArrayDimension
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Int8
 from sensor_msgs.msg import Image
 
 from cv_bridge import CvBridge, CvBridgeError
@@ -32,45 +32,51 @@ class PID_GUI(object):
 
         self.win = tk.Tk()
         self.win.title('PID Controller')
-        self.win.geometry('310x550')
+        self.win.geometry('310x350')
 
         button_place = IBVS_PARAMETER['button_place']
 
         self.entry_dict = {}
         for k in self.ibvs_controller.gain_keys:
             x, y = button_place[k]
-            lable = tk.Label(self.win, text=k, font=('Arial', 12), width=15, height=1)
-            lable.place(x=x, y=y, width=100)
+            lable = tk.Label(self.win, text=k, font=('Arial', 12), width=10, height=1)
+            lable.place(x=x, y=y, width=70)
             e = tk.Entry(self.win)
             e.insert('end', str(self.ibvs_controller.gain_default[k]))
 
             self.entry_dict[k] = e
-            self.entry_dict[k].place(x=x, y=y+30, width=100)
+            self.entry_dict[k].place(x=x, y=y+30, width=70)
 
         tk.Scale(
             self.win, label='Desire Azimuth', command=self._set_azimuth,
             from_=0, to=180, orient=tk.HORIZONTAL,
             length=300, tickinterval=20, resolution=1, sliderlength=20
-            ).place(x=0, y=250)
+            ).place(x=0, y=60)
 
         tk.Scale(
             self.win, label='Desire Distance', command=self._set_distance,
             from_=1, to=2, orient=tk.HORIZONTAL,
             length=300, tickinterval=0.25, resolution=0.01, sliderlength=20
-            ).place(x=0, y=350)
+            ).place(x=0, y=130)
 
         apply_gain_botton = tk.Button(self.win, text="apply", width=15, height=2, command=self._apply)
 
-        self.fix_pose = tk.BooleanVar()
-        self.fix_pose.set(True)
+        # self.fix_pose = tk.BooleanVar()
+        # self.fix_pose.set(0)
+        self.fly_mode = tk.IntVar()
+        self.fly_mode.set(1)
 
         start_IBVS_botton = tk.Radiobutton(
             self.win, text='IBVS',
-            variable=self.fix_pose, value=False, command=self._fix_pose)
+            variable=self.fly_mode, value=2, command=self._fly_mode)
 
         fix_pose_botton = tk.Radiobutton(
             self.win, text='Fix Pose',
-            variable=self.fix_pose, value=True, command=self._fix_pose)
+            variable=self.fly_mode, value=1, command=self._fly_mode)
+
+        down_botton = tk.Radiobutton(
+            self.win, text='Down',
+            variable=self.fly_mode, value=0, command=self._fly_mode)
 
         self.land = tk.BooleanVar()
         self.land.set(False)
@@ -79,17 +85,18 @@ class PID_GUI(object):
             self.win, text="land", variable=self.land,
             onvalue=True, offvalue=False, command=self._land)
 
-        start_IBVS_botton.place(x=200, y=430, width=100, height=50)
-        fix_pose_botton.place(x=100, y=430, width=100, height=50)
-        landing_botton.place(x=0, y=430, width=100, height=50)
-        apply_gain_botton.place(x=100, y=500, width=100)
+        start_IBVS_botton.place(x=200, y=200, width=100, height=50)
+        fix_pose_botton.place(x=100, y=200, width=100, height=50)
+        down_botton.place(x=0, y=200, width=100, height=50)
+        landing_botton.place(x=0, y=250, width=100, height=50)
+        apply_gain_botton.place(x=100, y=300, width=100)
 
         self._apply()
 
-    def _fix_pose(self):
-        b = Bool()
-        b.data = self.fix_pose.get()
-        self.ibvs_controller.ibvs_fix_pose_pub.publish(b)
+    def _fly_mode(self):
+        m = Int8()
+        m.data = self.fly_mode.get()
+        self.ibvs_controller.ibvs_fly_mode_pub.publish(m)
 
     def _land(self):
         b = Bool()
@@ -120,7 +127,7 @@ class PID_GUI(object):
             self.ibvs_controller.gain[k] = float(self.entry_dict[k].get())
 
             print('%s: %.2f' % (k, self.ibvs_controller.gain[k]), end='\t')
-            if i % 3 == 2:
+            if i % 4 == 3:
                 print()
 
 
@@ -153,8 +160,8 @@ class IBVS_Controller():
 
         self.t0 = rospy.get_rostime()
         rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self._pose_callback)
-        self.heading = 0
-        while not hasattr(self, 'heading'):
+        self.uav_heading = 0
+        while not hasattr(self, 'uav_heading'):
             time.sleep(1)
         #rospy.sleep(1)  # wait for local pose
         rospy.Subscriber('/YOLO/box', Float32MultiArray, self._vel_callback)
@@ -181,9 +188,9 @@ class IBVS_Controller():
             IBVS_PARAMETER['LAND_TOPIC'],
             Bool, queue_size=1)
 
-        self.ibvs_fix_pose_pub = rospy.Publisher(
-            IBVS_PARAMETER['FIX_POSE_TOPIC'],
-            Bool, queue_size=1)
+        self.ibvs_fly_mode_pub = rospy.Publisher(
+            IBVS_PARAMETER['FLY_MODE_TOPIC'],
+            Int8, queue_size=1)
 
         self.pid_output = Float32MultiArray()
         self.pid_output.layout.dim.append(MultiArrayDimension())
@@ -193,8 +200,8 @@ class IBVS_Controller():
         self.pid_output.data = [0] * len(AXIS) * len(PID)
 
     def _vel_callback(self, box):
-        if not hasattr(self, 'heading'):
-            print('Wait For Heading msgs')
+        if not hasattr(self, 'uav_heading'):
+            print('Wait For uav_heading msgs')
             return
 
         self.t1 = self.t0
@@ -216,14 +223,14 @@ class IBVS_Controller():
 
         else:
             local_x, local_y, vz, vw = self._get_pid_output()
-            local_x = self._vel_bound(local_x, 10, 0.03)
-            local_y = self._vel_bound(local_y, 10, 0.03)
+            local_x = self._vel_bound(local_x, 1, 0.05)
+            local_y = self._vel_bound(local_y, 1, 0.05)
 
-            global_x = (local_x*math.cos(self.heading) -
-                        local_y*math.sin(self.heading))
+            global_x = (local_x*math.cos(self.uav_heading) -
+                        local_y*math.sin(self.uav_heading))
 
-            global_y = (local_y*math.cos(self.heading) +
-                        local_x*math.sin(self.heading))
+            global_y = (local_y*math.cos(self.uav_heading) +
+                        local_x*math.sin(self.uav_heading))
 
             vel_msgs.twist.linear.x = global_x
             vel_msgs.twist.linear.y = global_y
@@ -249,34 +256,41 @@ class IBVS_Controller():
     def _pose_callback(self, pose):
         z = pose.pose.orientation.z
         w = pose.pose.orientation.w
-        heading = math.atan2(z, w) * 2
+        uav_heading = math.atan2(z, w) * 2
 
-        if heading > math.pi:
-            self.heading = heading - 2 * math.pi
-        elif heading < - math.pi:
-            self.heading = heading + 2 * math.pi
+        if uav_heading > math.pi:
+            self.uav_heading = uav_heading - 2 * math.pi
+        elif uav_heading < - math.pi:
+            self.uav_heading = uav_heading + 2 * math.pi
         else:
-            self.heading = heading
+            self.uav_heading = uav_heading
+
+        self.uav_height = pose.pose.position.z
 
     def _update_error(self, box, dt):
         # print(dt)
         if box[0] > self.car_threshold:
             self.loss_target_counter = 0
-
-            print(box[5])
+            # -------------------- x -------------------- #
             if box[5] > 0:
+                # print(box[5])
                 errx = box[5] - self.desire_distance
             else:
                 print('No Depth Infomation')
-                errx = 0.18 - box[3] * box[4]
+                errx = 0.3 - box[3] * box[4]
 
+            # -------------------- y -------------------- #
+            # erry = (box[6] - math.pi) if box[6] > 0 else (box[6] + math.pi)
             erry = get_erry(box[-24:], self.desire_azimuth)
 
+            # -------------------- z -------------------- #
+            # errz = 0.7 - box[1]  # middle of image
+            errz = 1.2 - self.uav_height
+
             err_now = {
-                #'y': (box[6] - math.pi) if box[6] > 0 else (box[6] + math.pi),
-                'x': errx,  # desire distance
+                'x': errx,
                 'y': erry,
-                'z': 0.7 - box[1],  # middle of image
+                'z': errz,
                 'w': 0.5 - box[2]  # middle of image
             }
 
@@ -290,8 +304,6 @@ class IBVS_Controller():
                     self.err_pid[ax+'d'] = (err_now[ax] - self.err_log[ax][-2])/dt
                 else:
                     self.err_pid[ax+'d'] = 0
-            #print(self.err_log['x'][-2])
-            #print(err_now[ax])
 
         else:
             #print('Loss')

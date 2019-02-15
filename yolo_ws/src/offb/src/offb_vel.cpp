@@ -9,6 +9,7 @@
  */
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
+#include <std_msgs/Int8.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TwistStamped.h>
 
@@ -33,10 +34,10 @@ void vel_cb(const geometry_msgs::TwistStamped::ConstPtr& msg) {
     twist = *msg;
 }
 
-bool set_pose = true;
+int fly_mode = 1;
 
-void set_pose_cb(const std_msgs::Bool::ConstPtr& msg) {
-    set_pose = msg->data;
+void fly_mode_cb(const std_msgs::Int8::ConstPtr& msg) {
+    fly_mode = msg->data;
 }
 
 bool land = false;
@@ -76,10 +77,6 @@ char getch(){
     return (buf);
 }
 
-
-/*
- * Call main using `rosrun offb offb_main`.
- */
 int main(int argc, char **argv) {
     ros::init(argc, argv, "offb_main");
     ros::NodeHandle nh;
@@ -88,8 +85,8 @@ int main(int argc, char **argv) {
                                 ("/mavros/state", 10, state_cb);
     ros::Subscriber cmd_vel_sub = nh.subscribe<geometry_msgs::TwistStamped>
                                 ("/ibvs_gui/cmd_vel", 1, vel_cb);
-    ros::Subscriber set_pose_sub = nh.subscribe<std_msgs::Bool>
-                                ("/ibvs_gui/fix_pose", 1, set_pose_cb);
+    ros::Subscriber set_pose_sub = nh.subscribe<std_msgs::Int8>
+                                ("/ibvs_gui/fly_mode", 1, fly_mode_cb);
     ros::Subscriber land_sub = nh.subscribe<std_msgs::Bool>
                                 ("/ibvs_gui/land", 1, land_cb);
 
@@ -112,26 +109,24 @@ int main(int argc, char **argv) {
         rate.sleep();
     }
 
-    //bool set_pose=true;
-
     geometry_msgs::PoseStamped pose;
     pose.pose.position.x = 0;
     pose.pose.position.y = 0;
-    pose.pose.position.z = 1.0;
-    pose.pose.orientation.z = 0.0;
-    pose.pose.orientation.w = 1.0;
+    pose.pose.position.z = 0.8;
+    pose.pose.orientation.z = 0.7071;
+    pose.pose.orientation.w = -0.7071;
     
     geometry_msgs::TwistStamped no_cmd_twist;
     no_cmd_twist.twist.linear.x = 0;
     no_cmd_twist.twist.linear.y = 0;
-    no_cmd_twist.twist.linear.z = 0;
+    no_cmd_twist.twist.linear.z = -0;
     no_cmd_twist.twist.angular.z = 0.0;
 
-    geometry_msgs::TwistStamped land_cmd_twist;
-    land_cmd_twist.twist.linear.x = 0;
-    land_cmd_twist.twist.linear.y = 0;
-    land_cmd_twist.twist.linear.z = -0.1;
-    land_cmd_twist.twist.angular.z = 0.0;
+    geometry_msgs::TwistStamped down_twist;
+    down_twist.twist.linear.x = 0;
+    down_twist.twist.linear.y = 0;
+    down_twist.twist.linear.z = sin(45);
+    down_twist.twist.angular.z = 0.0;
 
     mavros_msgs::SetMode offb_set_mode;
     offb_set_mode.request.custom_mode = "OFFBOARD";
@@ -142,16 +137,7 @@ int main(int argc, char **argv) {
     ros::Time last_request(0);
 
     while (ros::ok()) {
-
         if (land){
-            for (int i=0; i<=100; i++) {
-                ROS_INFO("LLLLLLLLAAAAAAANNNNNNNDDDDDDDDD!!!!!!!!!");
-                local_vel_pub.publish(land_cmd_twist);
-                ros::spinOnce();
-                rate.sleep();
-            }
-
-            ROS_INFO("Land Done");
             offb_set_mode.request.custom_mode = "MANUAL";
             set_mode_client.call(offb_set_mode);
             arm_cmd.request.value = false;
@@ -164,7 +150,7 @@ int main(int argc, char **argv) {
             pose.pose.orientation.w = 1.0;
         }
 
-	   else{
+	    else{
             if (current_state.mode != "OFFBOARD" &&
                     (ros::Time::now() - last_request > ros::Duration(5.0))) {
                 if( set_mode_client.call(offb_set_mode) &&
@@ -214,26 +200,33 @@ int main(int argc, char **argv) {
                     break;
                 }
             }
+            
+            switch (fly_mode) {
 
-            if (set_pose) {
-                ROS_INFO(
-					"setpoint: %.2f, %.2f, %.2f", pose.pose.position.x, 
-					pose.pose.position.y, pose.pose.position.z);
+                case 0:
+                    ROS_INFO("Down");
+                    local_vel_pub.publish(down_twist);
+                    break;
 
-                local_pos_pub.publish(pose);
-            }
+                case 1:
+                    local_pos_pub.publish(pose);
+                    ROS_INFO(
+                        "setpoint: %.2f, %.2f, %.2f", pose.pose.position.x, 
+                        pose.pose.position.y, pose.pose.position.z);
+                    break;
 
-            else {
-                ros::Time currtime = ros::Time::now();
-                ros::Duration diff = currtime - twist.header.stamp;            
+                case 2:
+                    ros::Time currtime = ros::Time::now();
+                    ros::Duration diff = currtime - twist.header.stamp;            
 
-                if(diff<ros::Duration(1.0)) {
-                    local_vel_pub.publish(twist);
-                }
-                else {
-                    ROS_INFO("Loss Command, Hovering");
-                    local_vel_pub.publish(no_cmd_twist);
-                }
+                    if(diff < ros::Duration(1.0)) {
+                        local_vel_pub.publish(twist);
+                    }
+                    else {
+                        ROS_INFO("Loss Command, Hovering");
+                        local_vel_pub.publish(no_cmd_twist);
+                    }
+                    break;
             }
         }
         ros::spinOnce();

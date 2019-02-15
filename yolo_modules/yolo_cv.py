@@ -203,7 +203,6 @@ def cv2_add_bbox(im, b, color_idx, use_r=True):
     c = np.array(_color[color_idx])
     cv2.polylines(im, a, 1, c, 2)
 
-
     return im
 
 

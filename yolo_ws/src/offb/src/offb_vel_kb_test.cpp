@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
     bool land = false;
 	while(ros::ok()){
         if (land){
-            ROS_INFO("LLLLLLLLAAAAAAANNNNNNNDDDDDDDDD!!!!!!!!!");
+            ROS_INFO("LAND!");
             offb_set_mode.request.custom_mode = "MANUAL";
             set_mode_client.call(offb_set_mode);
             arm_cmd.request.value = false;
@@ -152,9 +152,9 @@ int main(int argc, char **argv) {
 		    }//if (c != EOF)
 		    switch (ctr_mode) {
 			    case 0:
-			    	KeyBoard_control(c);
+			    	//KeyBoard_control(c);
 				    // Setting position may fail
-				    //take_off();
+				    take_off();
 				    break;
 			    case 1:
 				    KeyBoard_control(c);

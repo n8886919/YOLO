@@ -217,13 +217,19 @@ class LPGenerator():
         return img_batch, label_batch
 
     def test_render(self, n):
+        LP, LP_type, labels = self.draw_LP()
+        # LP_w, LP_h = LP.size
+        LP_w = LP.size[0]
+        LP_h = LP.size[1]
+        LP.show()
+        '''
         plt.ion()
         fig = plt.figure()
         ax = []
         for i in range(n):
             ax.append(fig.add_subplot(321+i))
         while True:
-            img_batch, label_batch = self.render(n, gpu(0))
+            img_batch, label_batch = self.render(n)
             for i in range(n):
                 label = label_batch[i]
                 s = self.label2nparray(label)
@@ -232,7 +238,7 @@ class LPGenerator():
                 ax[i].imshow(img_batch[i].transpose((1, 2, 0)).asnumpy())
 
             raw_input('next')
-
+        '''
     def label2nparray(self, label):
         score = nd.zeros((24))
         for L in label:  # all object in the image

@@ -799,7 +799,7 @@ class YOLO(object):
     def valid_Nima_plot(self):
         import matplotlib.pyplot as plt
         filter_index = [14, 17]
-        path = (freiburg_path + '/result_v2/annotations')
+        path = (freiburg_path + '/result_v4/annotations')
         plot_path = os.path.join(path, 'plot')
         if not os.path.exists(plot_path):
             os.makedirs(plot_path)

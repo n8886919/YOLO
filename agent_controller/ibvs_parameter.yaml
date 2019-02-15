@@ -1,9 +1,9 @@
 { 
   DESIRE_AZI_TOPIC: '/ibvs_gui/desire_azi',
-  DESIRE_DIS_TOPIC: '/ibvs_gui/desire_azi',
+  DESIRE_DIS_TOPIC: '/ibvs_gui/desire_dis',
   PID_TOPIC: '/ibvs_gui/pid',
   LAND_TOPIC: '/ibvs_gui/land',
-  FIX_POSE_TOPIC: '/ibvs_gui/fix_pose',
+  FLY_MODE_TOPIC: '/ibvs_gui/fly_mode',
   CMD_VEL_TOPIC: '/ibvs_gui/cmd_vel',
 
   gain_default: 
@@ -19,9 +19,13 @@
     },
   button_place:
     {
-      'xp': [0, 0], #'xi': [100, 0], 'xd': [200, 0],
-      'yp': [0, 60], #'yi': [100, 60], 'yd': [200, 60],
-      'zp': [0, 120], #'zi': [100, 120], 'zd': [200, 120],
-      'wp': [0, 180], #'wi': [100, 180], 'wd': [200, 180]
+      #'xp': [0, 0], 'xi': [100, 0], 'xd': [200, 0],
+      #'yp': [0, 60], 'yi': [100, 60], 'yd': [200, 60],
+      #'zp': [0, 120], 'zi': [100, 120], 'zd': [200, 120],
+      #'wp': [0, 180], 'wi': [100, 180], 'wd': [200, 180]
+      'xp': [0, 0], 
+      'yp': [70, 0], 
+      'zp': [140, 0],
+      'wp': [210, 0], 
     }
 }
