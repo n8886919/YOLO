@@ -1,5 +1,5 @@
 import copy
-import cv2
+#import cv2
 import threading
 
 import rospy
@@ -39,7 +39,7 @@ class CarLPVideo(Video):
         self.project_rect_6d = licence_plate_render.ProjectRectangle6D(
             int(380*1.1), int(160*1.1))
 
-        self.car_threshold = 0.5
+        self.car_threshold = 0.95
         self.LP_threshold = 0.1
         self._init(args)
 
@@ -105,8 +105,8 @@ class CarLPVideo(Video):
             clipped_LP_msg = self.bridge.cv2_to_imgmsg(clipped_LP, 'bgr8')
             self.clipped_LP_pub.publish(clipped_LP_msg)
 
-            if self.show:
-                cv2.imshow('Licence Plate', clipped_LP)
+            #if self.show:
+                #cv2.imshow('Licence Plate', clipped_LP)
 
         self.visualize(pred_car, img)
 

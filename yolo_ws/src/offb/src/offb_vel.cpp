@@ -113,8 +113,8 @@ int main(int argc, char **argv) {
     pose.pose.position.x = 0;
     pose.pose.position.y = 0;
     pose.pose.position.z = 0.8;
-    pose.pose.orientation.z = 0.7071;
-    pose.pose.orientation.w = -0.7071;
+    pose.pose.orientation.z = 0;
+    pose.pose.orientation.w = 1;
     
     geometry_msgs::TwistStamped no_cmd_twist;
     no_cmd_twist.twist.linear.x = 0;
@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
     geometry_msgs::TwistStamped down_twist;
     down_twist.twist.linear.x = 0;
     down_twist.twist.linear.y = 0;
-    down_twist.twist.linear.z = sin(45);
+    down_twist.twist.linear.z = -0.3;
     down_twist.twist.angular.z = 0.0;
 
     mavros_msgs::SetMode offb_set_mode;
