@@ -13,6 +13,24 @@ from yolo_modules import global_variable
 
 # -------------------- train/valid -------------------- #
 def record_loss(losses, loss_names, summary_writer, step=0, exp=''):
+    '''
+    record a list of losses to summary_writer.
+
+    Parameter:
+    ----------
+    losses: list of mxnet.ndarray
+      the array is 1-D, length is batch size
+    loss_names: list of string
+      name of losses, len()
+    summary_writer: mxboard.SummaryWriter
+    step: int
+      training step
+    exp: string
+      record to which figure
+    '''
+    assert len(losses) == len(loss_names), (
+        'length of first arg(losses) should equal to second arg(loss_names)')
+
     for i, L in enumerate(losses):
         loss_name = loss_names[i]
         summary_writer.add_scalar(
@@ -22,6 +40,22 @@ def record_loss(losses, loss_names, summary_writer, step=0, exp=''):
 
 
 def load_background(train_or_val, bs, h, w, **kargs):
+    '''
+    load sun data in disk_path/HP_31/sun2012_(train/valid)
+    disk_path is defined in /yolo_modules/global_variable.training_data_path
+    HP_31/sun2012_(train/valid) download link:
+    https://drive.google.com/open?id=1gO0cNUV7qdkOWUx-yRNcnqvXtpKsaz6l
+
+    Parameter:
+    ----------
+    BG_iter: mxnet.image.ImageIter
+      ImageIter object.
+
+    Returns
+    ----------
+    BG_iter.next().data[0]: mxnet.ndarray
+      A batch of images.
+    '''
     path = global_variable.training_data_path
     path = path + '/HP_31/sun2012_' + train_or_val
     if train_or_val == 'train':
@@ -43,6 +77,17 @@ def load_background(train_or_val, bs, h, w, **kargs):
 
 
 def ImageIter_next_batch(BG_iter):
+    '''
+    Parameter:
+    ----------
+    BG_iter: mxnet.image.ImageIter
+      ImageIter object.
+
+    Returns
+    ----------
+    BG_iter.next().data[0]: mxnet.ndarray
+      A batch of images.
+    '''
     try:
         return BG_iter.next().data[0]
     except Exception as e:
@@ -52,9 +97,19 @@ def ImageIter_next_batch(BG_iter):
 
 
 def split_render_data(batch, ctx):
-    # split_render_data(batch_x, batch_y, ctx)
-    # >>> split_render_data(batch, ctx)
-    # splitted_batches = [data0 in gpu0, data0 in gpu1]
+    '''
+    Parameter:
+    ----------
+    batch: mxnet.ndarray
+      len(batch) is batch size
+    ctx: list
+      ex: [mxnet.gpu(0), mxnet.gpu(1)...., mxnet.gpu(N)]
+
+    Returns
+    ----------
+    splitted_batch: list
+      ex: [small_batch_1, small_batch_1...., small_batch_N]
+    '''
     splitted_batch = []
     batch_size = len(batch)
 
@@ -114,6 +169,20 @@ def get_iou(predict, target, mode=1):
 
 # -------------------- net -------------------- #
 def init_NN(target, weight, ctx):
+    '''
+    load NN weight, if load fail, use Xavier_init
+
+    Parameter:
+    ----------
+    target: gluon.HybridBlock
+    weight: string
+      NN weight path
+    ctx: mxnet.gpu/cpu or list of mxnet.gpu/cpu
+
+    Returns
+    ----------
+        target.hybridize(): gluon.HybridBlock
+    '''
     print(global_variable.magenta)
     print('use pretrain weight: %s' % weight)
     try:
@@ -203,6 +272,17 @@ def export(net, batch_shape, ctx, export_folder, onnx=False, epoch=0, fp16=False
 
 
 def get_latest_weight_from(path):
+    '''
+    Parameter:
+    ----------
+    path: string
+      a floder contain a lot of weights
+
+    Returns
+    ----------
+    weight: string
+      the path of the weight
+    '''
     backup_list = glob.glob(path + '/*')
     if len(backup_list) != 0:
         weight = max(backup_list, key=os.path.getctime)
@@ -220,6 +300,8 @@ def pil_mask_2_rgb_ndarray(m):
 
 
 def pil_rgb_2_rgb_ndarray(pil_img, augs=None):
+    # augs: mxnet.image.CreateAugmenter
+
     pil_img = PIL.Image.merge("RGB", (pil_img.split()[:3]))
     img = nd.array(pil_img)
 
@@ -231,16 +313,6 @@ def pil_rgb_2_rgb_ndarray(pil_img, augs=None):
 
 
 # -------------------- video -------------------- #
-def nd_white_balance(nd_img, bgr=(1.0, 1.0, 1.0)):
-    assert len(bgr) == 3 and nd_img.shape[1] == 3, (
-        global_variable.red + 'len(bgr) != 3 or nd_img.shape[1] != 3')
-
-    for i, color_weight in enumerate(bgr):
-        nd_img[:, i, :, :] = nd_img[:, i, :, :] * color_weight
-
-    return nd_img
-
-
 def test_inference_rate(net, shape, cycles=100, ctx=mxnet.gpu(0)):
     # shape =  (1, 3, size[0], size[1])
     data = nd.zeros(shape).as_in_context(ctx)
@@ -260,6 +332,20 @@ def test_inference_rate(net, shape, cycles=100, ctx=mxnet.gpu(0)):
 
 # -------------------- other -------------------- #
 def cv_img_2_ndarray(image, ctx, mxnet_resize=None):
+    '''
+    Parameter:
+    ----------
+    image: np.array
+      (h, w, rgb)
+    ctx: mxnet.gpu/cpu
+    mxnet_resize: mxnet.image.ForceResizeAug
+
+    Returns
+    ----------
+    nd_img: mxnet.ndarray
+      (bs, rgb, h, w)
+    '''
+
     nd_img = nd.array(image)
     if mxnet_resize is not None:
         nd_img = mxnet_resize(nd_img)
@@ -281,11 +367,35 @@ def nd_inv_sigmoid(x):
 
 
 def get_ctx(gpu):
+    '''
+    Parameter:
+    ----------
+    gpu: list of int
 
+    Returns
+    ----------
+    list of mxnet.gpu
+
+    example
+    [0, 1, 2] --> [mxnet.gpu(0), mxnet.gpu(1), mxnet.gpu(2)]
+    '''
     return [mxnet.gpu(int(i)) for i in gpu]
 
 
 def nd_label_batch_ltrb2yxhw(label_batch):
+    '''
+    Parameter:
+    ----------
+    label_batch: mxnet.ndarray
+      dim=3, shape=(bs, obj, 4)
+      bs*obj bounding boxes, format is left-top-right-bottom
+
+    Returns
+    ----------
+    new_label_batch: mxnet.ndarray
+      dim=3, shape=(xx, xx, 4)
+      bounding boxes, format is y-x-height-width
+    '''
     new_label_batch = nd.zeros_like(label_batch)
     # x, y, h, w
     new_label_batch[:, :, 0] = (label_batch[:, :, 1] + label_batch[:, :, 3])/2

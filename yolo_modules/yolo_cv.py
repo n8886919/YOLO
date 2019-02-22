@@ -2,12 +2,12 @@ import cv2
 import numpy as np
 import math
 import matplotlib
-matplotlib.use('TkAgg')
-import matplotlib.pyplot as plt
 import PIL
-
+matplotlib.use('TkAgg')
+# import matplotlib.pyplot as matplotlib.pyplot
 
 _color = [
+    # BGR?
     (255, 255, 0),
     (255, 0, 255),
     (0, 255, 255),
@@ -24,8 +24,8 @@ class RadarProb():
         self.cos_offset = np.array([math.cos(x*math.pi/180) for x in range(0, 360, s)])
         self.sin_offset = np.array([math.sin(x*math.pi/180) for x in range(0, 360, s)])
 
-        plt.ion()
-        fig = plt.figure()
+        matplotlib.pyplot.ion()
+        fig = matplotlib.pyplot.figure()
         self.ax = fig.add_subplot(111, polar=True)
         self.ax.grid(False)
         self.ax.set_ylim(0, 1)
@@ -63,7 +63,7 @@ class RadarProb():
         self.ax.set_title(str(confidence), bbox=dict(facecolor='g', alpha=0.2))
         self.ax.grid(False)
 
-        plt.pause(0.001)
+        matplotlib.pyplot.pause(0.001)
 
     def plot(self, confidence, prob):
         vec_ang, vec_rad, prob = self.cls2ang(confidence, prob)
@@ -78,7 +78,7 @@ class RadarProb():
         self.ax.plot(ang, prob, 'b-', linewidth=1)
         self.ax.set_ylim(0, 1)
         self.ax.set_thetagrids(ang*180/np.pi)
-        plt.pause(0.001)
+        matplotlib.pyplot.pause(0.001)
 
     def cls2ang(self, confidence, prob):
         prob = _numpy_softmax(prob)
@@ -156,8 +156,8 @@ class PILImageEnhance():
 
 
 def init_matplotlib_figure():
-    plt.ion()
-    fig = plt.figure()
+    matplotlib.pyplot.ion()
+    fig = matplotlib.pyplot.figure()
     return fig.add_subplot(1, 1, 1)
 
 
@@ -177,6 +177,16 @@ def white_balance(img, bgr=None):
     return np.clip(img, 0, 255).astype(np.uint8)
 
 
+def nd_white_balance(nd_img, bgr=(1.0, 1.0, 1.0)):
+    assert len(bgr) == 3 and nd_img.shape[1] == 3, (
+        global_variable.red + 'len(bgr) != 3 or nd_img.shape[1] != 3')
+
+    for i, color_weight in enumerate(bgr):
+        nd_img[:, i, :, :] = nd_img[:, i, :, :] * color_weight
+
+    return nd_img
+
+
 def _numpy_softmax(x):
 
     return np.exp(x)/np.sum(np.exp(x), axis=0)
@@ -184,9 +194,19 @@ def _numpy_softmax(x):
 
 def cv2_add_bbox(im, b, color_idx, use_r=True):
     '''
-    b: [score, y, x, h, w, rotate, .....]
+    Parameter:
+    ----------
+    im: cv2_image
+    b: list
+      [score, y, x, h, w, rotate, .....], rotate unit is rad
+    color_idx: int, max is 7
+    use_r: bool
+      use b[5] for rotating or not
+
+    Returns
+    ----------
+    the image with bounding box
     '''
-    # r = -b[5]
     r = 0 if not use_r else -b[5]
 
     im_w = im.shape[1]
@@ -245,6 +265,7 @@ def jetson_onboard_camera(width, height, dev):
     # On versions of L4T previous to L4T 28.1, flip-method=2
     # Use Jetson onboard camera
     if dev == 'xavier':
+        print('\033[1;31mxavier onboard camera is not stable\033[0m')
         gst_str = (
             'nvarguscamerasrc ! video/x-raw(memory:NVMM), '
             'width=(int){}, height=(int){}, '

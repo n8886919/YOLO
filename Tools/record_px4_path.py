@@ -12,9 +12,10 @@ recorder_y = 0
 LP_state = 0
 ocr_result = ''
 
+
 def pose_cb(pose_stamp):
     global recorder_x, recorder_y, LP_state
-    
+
     x = pose_stamp.pose.position.x
     y = pose_stamp.pose.position.y
     z = pose_stamp.pose.position.z
@@ -30,11 +31,13 @@ def pose_cb(pose_stamp):
     recorder_x = x
     recorder_y = y
 
+
 def ocr_cb(data):
     global ocr_time, ocr_result
     ocr_time = time.time()
     print(ocr_time)
     ocr_result = data.data
+
 
 rospy.init_node("record_px4_path", anonymous=True)
 rospy.Subscriber('/mavros/local_position/pose', PoseStamped, pose_cb)

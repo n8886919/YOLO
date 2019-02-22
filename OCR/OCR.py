@@ -145,16 +145,9 @@ def _image_callback(img):
 saver = {}
 def cv2_show_OCR_result(img, score, text):
     global save_counter, saver
-    x = np.arange(8, 384, 16).reshape(-1, 1)
-    y = ((1-score) * 160).reshape(-1, 1)
-    points = np.concatenate((x, y), axis=-1)
-    points = np.expand_dims(points, axis=0).astype(np.int32)
-
-    cv2.polylines(img, points, 0, (255, 0, 0), 2)
-    cv2.putText(img, text, (0, 60), 2, 2, (0, 0, 255), 2)
+    print(score)
     # image/text/left-top/font type/size/color/width
     cv2.imshow('img', img)
-    print(text)
     if len(text) == 7 and \
        text[0] in alphabet and \
        text[1] in alphabet and \
@@ -163,6 +156,14 @@ def cv2_show_OCR_result(img, score, text):
        text[4] in number and \
        text[5] in number and \
        text[6] in number:
+
+        x = np.arange(8, 384, 16).reshape(-1, 1)
+        y = ((1-score) * 160).reshape(-1, 1)
+        points = np.concatenate((x, y), axis=-1)
+        points = np.expand_dims(points, axis=0).astype(np.int32)
+
+        cv2.polylines(img, points, 0, (255, 0, 0), 2)
+        cv2.putText(img, text, (0, 60), 2, 2, (0, 0, 255), 2)
 
         folder = '/media/nolan/SSD1/YOLO_backup/ocr/saved_LP'
         path = os.path.join(folder, 'ocr_out_%d.jpg' % save_counter)
