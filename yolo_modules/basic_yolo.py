@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from mxnet import gluon
 from gluoncv.model_zoo.yolo.darknet import DarknetBasicBlockV3, _conv2d
 from gluoncv.model_zoo.yolo.yolo3 import YOLODetectionBlockV3, _upsample

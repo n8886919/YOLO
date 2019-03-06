@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import cv2
 import numpy as np
 import math
@@ -192,7 +193,7 @@ def _numpy_softmax(x):
     return np.exp(x)/np.sum(np.exp(x), axis=0)
 
 
-def cv2_add_bbox(im, b, color_idx, use_r=True):
+def cv2_add_bbox(im, b, color_idx, use_r=False):
     '''
     Parameter:
     ----------
@@ -239,6 +240,22 @@ def cv2_add_bbox_text(img, p, text, c):
 
 
 def cv2_flip_and_clip_frame(img, clip, flip):
+    '''
+    Parameter:
+    ----------
+    img: np.array
+      cv2 image
+    clip: list of clip_ratio
+      [h_clip_ratio, w_clip_ratio]
+    flip: int
+      # flip = 1: left-right
+      # flip = 0: top-down
+      # flip = -1: flip=1 + flip=0
+
+    Returns
+    ----------
+    img: np.array
+    '''
     assert type(clip) == tuple and len(clip) == 2, (
         global_variable.red +
         'clip should be a tuple, (height_ratio, width_ratio')
@@ -254,9 +271,6 @@ def cv2_flip_and_clip_frame(img, clip, flip):
 
     if flip == 1 or flip == 0 or flip == -1:
         img = cv2.flip(img, flip)
-        # flip = 1: left-right
-        # flip = 0: top-down
-        # flip = -1: 1 && 0
 
     return img
 

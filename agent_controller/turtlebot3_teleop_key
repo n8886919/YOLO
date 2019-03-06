@@ -48,6 +48,7 @@ space key, s : force stop
 CTRL-C to quit
 """
 
+
 def getKey():
     tty.setraw(sys.stdin.fileno())
     rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
@@ -59,16 +60,18 @@ def getKey():
     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
     return key
 
+
 def vels(x_vel, y_vel, z_vel, angular_vel):
     return "linear_vel %.1f %.1f %.1f\tangular_vel %.1f "% (x_vel, y_vel, z_vel, angular_vel)
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     settings = termios.tcgetattr(sys.stdin)
 
     rospy.init_node('turtlebot3_teleop')
     pub = rospy.Publisher('/cmd_vel', Twist, queue_size=5)
     '''
-    status = 0 
+    status = 0
     target_linear_vel = 0
     target_angular_vel = 0
     control_linear_vel = 0
@@ -81,39 +84,39 @@ if __name__=="__main__":
     print msg
     while(1):
         key = getKey()
-        if key == 'w' :
+        if key == 'w':
             x_vel += .1
             #status += 1
             print vels(x_vel, y_vel, z_vel, angular_vel)
-        elif key == 's' :
+        elif key == 's':
             x_vel -= .1
             #status += 1
             print vels(x_vel, y_vel, z_vel, angular_vel)
-        elif key == 'a' :
+        elif key == 'a':
             y_vel += .1
             #status += 1
             print vels(x_vel, y_vel, z_vel, angular_vel)
-        elif key == 'd' :
+        elif key == 'd':
             y_vel -= .1
             #status += 1
             print vels(x_vel, y_vel, z_vel, angular_vel)
-        elif key == 'k' :
+        elif key == 'k':
             z_vel += 1
             #status += 1
             print vels(x_vel, y_vel, z_vel, angular_vel)
-        elif key == 'm' :
+        elif key == 'm':
             z_vel -= 1
             #status += 1
             print vels(x_vel, y_vel, z_vel, angular_vel)
-        elif key == 'q' :
+        elif key == 'q':
             angular_vel += 0.1
             #status = status + 1
             print vels(x_vel, y_vel, z_vel, angular_vel)
-        elif key == 'e' :
+        elif key == 'e':
             angular_vel -= 0.1
             #status = status + 1
             print vels(x_vel, y_vel, z_vel, angular_vel)
-        elif key == ' ' :
+        elif key == ' ':
             x_vel = 0
             y_vel = 0
             z_vel = 0
@@ -121,7 +124,7 @@ if __name__=="__main__":
             print vels(0, 0, 0, 0)
         else:
             if (key == '\x03'):
-                break                
+                break
         '''
         elif status == 14 :
             print msg
@@ -140,9 +143,12 @@ if __name__=="__main__":
             control_angular_vel = target_angular_vel
         '''
         twist = Twist()
-        twist.linear.x = x_vel; twist.linear.y = y_vel; twist.linear.z = z_vel
-        twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = angular_vel
+        twist.linear.x = x_vel
+        twist.linear.y = y_vel
+        twist.linear.z = z_vel
+        twist.angular.x = 0
+        twist.angular.y = 0
+        twist.angular.z = angular_vel
         pub.publish(twist)
-
 
     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)

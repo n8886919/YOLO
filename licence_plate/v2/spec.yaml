@@ -1,0 +1,23 @@
+{
+  size: [320,512],
+  LP_slice_point: [1, 3, 4, 7, 10],
+  LP_positive_weight: 1.0,
+  LP_negative_weight: 0.1,
+  LP_r_max: [45, 60, 45],
+  LP_num_class: 3,
+  num_init_features: 64,
+  growth_rate: 32,
+  block_config: [6, 12, 24, 16],
+
+  batch_size: 16,
+  record_step: 10000,
+  learning_rate: 0.001,
+  loss_name: 
+    ['score', 'xy', 'z', 'r', 'class'],
+  scale: 
+    {
+      'LP_score': 0.1, 'LP_xy': 10.0, 'LP_z': 1.0, 'LP_r': 0.1, 'LP_class': 0.0},
+  exp: 'LP_', 
+  pub_clipped_LP: /YOLO/clipped_LP,
+  pub_LP: '/YOLO/LP'
+}

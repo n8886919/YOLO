@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
 				    default:
 					    break;
 			    }
-		    }//if (c != EOF)
+		    } //if (c != EOF)
 		    switch (ctr_mode) {
 			    case 0:
 			    	//KeyBoard_control(c);
@@ -164,11 +164,11 @@ int main(int argc, char **argv) {
 				    break;
 			    default:
 				    break;
-		    }//switch (ctr_mode)
+		    } //switch (ctr_mode)
 		    ros::spinOnce();
 		    rate.sleep();
-		}
-	}//while
+		} //else(not land)
+	} //while
 	return 0;
 }
 

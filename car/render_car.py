@@ -9,13 +9,13 @@ import mxnet
 from mxnet import gpu
 from mxnet import nd
 
-import matplotlib.pyplot as plt
-import PIL
-
 from yolo_modules import yolo_cv
 from yolo_modules import yolo_gluon
 from yolo_modules import licence_plate_render
 from yolo_modules import global_variable
+
+import matplotlib.pyplot as plt
+import PIL
 
 PNG_MIN_SCALE = 0.2
 PNG_MAX_SCALE = 1.0
@@ -518,12 +518,12 @@ if __name__ == '__main__':
     while True:
         bg = yolo_gluon.ImageIter_next_batch(bg_iter).as_in_context(ctx[0])
         imgs, labels = car_renderer.render(
-            bg, 'valid', render_rate=0.9, pascal=np.random.randint(2))
+            bg, 'valid', render_rate=0.9, pascal_rate=0.5)
         L1 = labels[0, 0]
 
-        imgs, L2 = LP_generator.add(imgs)
+        imgs, L2 = LP_generator.add(imgs, [45, 60, 45])
         img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
-        #img = yolo_cv.cv2_add_bbox(img, L1.asnumpy(), 4)
-        #print(L2)
+        img = yolo_cv.cv2_add_bbox(img, L1.asnumpy(), 4)
+        print(L2)
         yolo_cv.matplotlib_show_img(ax, img)
         raw_input()

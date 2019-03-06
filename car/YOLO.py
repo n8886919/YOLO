@@ -678,31 +678,6 @@ class YOLO(object):
             onnx=export_onnx,
             fp16=self.use_fp16)
 
-    # -------------------- utils Part -------------------- #
-    def merge_and_slice(self, all_output, points):
-        output = nd.concat(*all_output, dim=1)
-        i = 0
-        x = []
-        for pt in points:
-            y = output.slice_axis(begin=i, end=pt, axis=-1)
-            x.append(y)
-            i = pt
-        return x
-
-    def fp32_2_fp16(self, x):
-        for i, data in enumerate(x):
-            assert type(data) == mx.ndarray.ndarray.NDArray, (
-                'list  element should be mxnet.ndarray')
-            x[i] = x[i].astype('float16', copy=False)
-        return x
-
-    def fp16_2_fp32(self, x):
-        for i, data in enumerate(x):
-            assert type(data) == mx.ndarray.ndarray.NDArray, (
-                'list  element should be mxnet.ndarray')
-            x[i] = x[i].astype('float32', copy=False)
-        return x
-
     def valid_Nima(self):
         '''
         compare with "Unsupervised Generation of a Viewpoint"
@@ -856,6 +831,31 @@ class YOLO(object):
 
         print(sum(all_car_iou)/float(len(all_car_iou)))
         print(sum(all_car_azi)/float(len(all_car_azi)))
+
+    # -------------------- utils Part -------------------- #
+    def merge_and_slice(self, all_output, points):
+        output = nd.concat(*all_output, dim=1)
+        i = 0
+        x = []
+        for pt in points:
+            y = output.slice_axis(begin=i, end=pt, axis=-1)
+            x.append(y)
+            i = pt
+        return x
+
+    def fp32_2_fp16(self, x):
+        for i, data in enumerate(x):
+            assert type(data) == mx.ndarray.ndarray.NDArray, (
+                'list  element should be mxnet.ndarray')
+            x[i] = x[i].astype('float16', copy=False)
+        return x
+
+    def fp16_2_fp32(self, x):
+        for i, data in enumerate(x):
+            assert type(data) == mx.ndarray.ndarray.NDArray, (
+                'list  element should be mxnet.ndarray')
+            x[i] = x[i].astype('float32', copy=False)
+        return x
 
 
 '''

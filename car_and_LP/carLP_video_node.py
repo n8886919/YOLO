@@ -1,5 +1,4 @@
 import copy
-#import cv2
 import threading
 
 import rospy
@@ -23,7 +22,6 @@ from car.video_node import Video
 from YOLO import YOLO
 
 verbose = 0
-save_video_size = None
 
 
 def main():

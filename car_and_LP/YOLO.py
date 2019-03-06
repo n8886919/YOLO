@@ -55,6 +55,8 @@ class CarLPNet(basic_yolo.BasicYOLONet):
         self.LP_branch.add(YOLODetectionBlockV3(LP_channel, num_sync_bn_devices))
         self.LP_branch.add(YOLODetectionBlockV3(LP_channel, num_sync_bn_devices))
         self.LP_branch.add(YOLODetectionBlockV3(LP_channel, num_sync_bn_devices))
+        self.LP_branch.add(YOLODetectionBlockV3(LP_channel, num_sync_bn_devices))
+        self.LP_branch.add(YOLODetectionBlockV3(LP_channel, num_sync_bn_devices))
         self.LP_branch.add(gluon.nn.Conv2D(LP_slice_point[-1], kernel_size=1))
 
     def hybrid_forward(self, F, x, *args):
@@ -72,7 +74,9 @@ class CarLPNet(basic_yolo.BasicYOLONet):
                 _, LP_output = self.LP_branch[0](x)
                 _, LP_output = self.LP_branch[1](LP_output)
                 _, LP_output = self.LP_branch[2](LP_output)
-                LP_output = self.LP_branch[3](LP_output)
+                _, LP_output = self.LP_branch[3](LP_output)
+                _, LP_output = self.LP_branch[4](LP_output)
+                LP_output = self.LP_branch[5](LP_output)
                 LP_output = LP_output.transpose((0, 2, 3, 1))
                 end = True
 

@@ -43,11 +43,6 @@ def video_Parser():
     parser.add_argument("--gpu", help="gpu index", dest="gpu", default="0")
 
     parser.add_argument(
-        "--weight",
-        dest="weight", default=None,
-        help="pretrain weight path")
-
-    parser.add_argument(
         "--topic",
         dest="topic", default="/usb_cam/image_raw",
         help="ros topic to subscribe")
@@ -66,7 +61,7 @@ def video_Parser():
         "--show",
         dest="show", default=1, type=int,
         help="show processed image")
-
+    '''
     parser.add_argument(
         "--LP",
         dest="LP", default=1, type=int,
@@ -77,6 +72,11 @@ def video_Parser():
         dest="car", default=1, type=int,
         help="add car box")
 
+    parser.add_argument(
+        "--weight",
+        dest="weight", default=None,
+        help="pretrain weight path")
+    '''
     parser.add_argument(
         "--flip",
         dest="flip", default=3, type=int,
@@ -149,7 +149,7 @@ if __name__ == '__main__':
     with open(args.version+'/spec.yaml') as f:
         spec = yaml.load(f)
 
-    net = CarNet(spec, num_sync_bn_devices=2)
+    net = CarNet(spec, num_sync_bn_devices=-1)
     net.test(64*5, 64*8)
 
     from mxboard import SummaryWriter

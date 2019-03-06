@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import os
 
 training_data_path = '/media/nolan/SSD1'

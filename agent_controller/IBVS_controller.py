@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from __future__ import print_function
 import threading
 import time
@@ -21,6 +22,8 @@ from yolo_modules import global_variable
 
 AXIS = 'xyzw'
 PID = 'p'  # 'pid'
+desire_z = 1.0
+desize_x_area = 0.3
 
 with open('ibvs_parameter.yaml') as f:
     IBVS_PARAMETER = yaml.load(f)
@@ -120,7 +123,8 @@ class PID_GUI(object):
     def _apply(self):
         print(global_variable.green)
         print('NWE PID GAIN APPLYED !!!')
-        print(global_variable.cyan + '========================================')
+        print(global_variable.cyan + (
+            '========================================'))
 
         self.ibvs_controller.err_log_reset()
         for i, k in enumerate(self.ibvs_controller.gain_keys):
@@ -159,11 +163,12 @@ class IBVS_Controller():
         rospy.init_node("IBVS_controller_node", anonymous=True)
 
         self.t0 = rospy.get_rostime()
-        rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self._pose_callback)
+        rospy.Subscriber('/mavros/local_position/pose',
+                         PoseStamped,
+                         self._pose_callback)
         self.uav_heading = 0
-        while not hasattr(self, 'uav_heading'):
-            time.sleep(1)
-        #rospy.sleep(1)  # wait for local pose
+        # rospy.sleep(1)  # wait for local pose
+
         rospy.Subscriber('/YOLO/box', Float32MultiArray, self._vel_callback)
 
         self.bridge = CvBridge()
@@ -277,15 +282,17 @@ class IBVS_Controller():
                 errx = box[5] - self.desire_distance
             else:
                 print('No Depth Infomation')
-                errx = 0.3 - box[3] * box[4]
+                errx = desize_x_area - box[3] * box[4]
 
             # -------------------- y -------------------- #
             # erry = (box[6] - math.pi) if box[6] > 0 else (box[6] + math.pi)
             erry = get_erry(box[-24:], self.desire_azimuth)
 
             # -------------------- z -------------------- #
-            # errz = 0.7 - box[1]  # middle of image
-            errz = 1.2 - self.uav_height
+            if desire_z > 0:
+                errz = desire_z - self.uav_height
+            else:
+                errz = 0.7 - box[1]  # middle of image
 
             err_now = {
                 'x': errx,
@@ -355,8 +362,8 @@ def get_erry(x, desire_azimuth):
     c = sum(cos_offset*prob)
     s = sum(sin_offset*prob)
     vec_ang = math.atan2(s, c)
-    vec_rad = (s**2+c**2)**0.5
-    #print(vec_ang)
+    vec_rad = (s**2 + c**2)**0.5
+    print(vec_ang)
 
     erry = vec_ang - desire_azimuth * math.pi / 180
 
