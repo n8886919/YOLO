@@ -91,17 +91,26 @@ int main(int argc, char **argv) {
                                 ("/ibvs_gui/land", 1, land_cb);
 
     ros::Publisher local_pos_pub = nh.advertise<geometry_msgs::PoseStamped>
-                                   ("/mavros/setpoint_position/local", 10);
+                                   ("/mavros/setpoint_position/local", 1);
     ros::Publisher local_vel_pub = nh.advertise<geometry_msgs::TwistStamped>
-                                   ("/mavros/setpoint_velocity/cmd_vel", 10);
+                                   ("/mavros/setpoint_velocity/cmd_vel", 1);
     
     ros::ServiceClient arming_client = nh.serviceClient<mavros_msgs::CommandBool>
                                        ("/mavros/cmd/arming");
     ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>
                                          ("/mavros/set_mode");
 
+    geometry_msgs::PoseStamped pose;
+    pose.pose.position.x = 0.0;
+    pose.pose.position.y = 0.0;
+    pose.pose.position.z = 0.8;
+    pose.pose.orientation.x = 0.0;
+    pose.pose.orientation.y = 0.0;
+    pose.pose.orientation.z = 0.0;
+    pose.pose.orientation.w = 1.0;
+    
     // The setpoint publishing rate MUST be faster than 2Hz.
-    ros::Rate rate(30.0);
+    ros::Rate rate(100.0);
 
     // Wait for FCU connection.
     while (ros::ok() && current_state.connected) {
@@ -109,23 +118,23 @@ int main(int argc, char **argv) {
         rate.sleep();
     }
 
-    geometry_msgs::PoseStamped pose;
-    pose.pose.position.x = 0;
-    pose.pose.position.y = 0;
-    pose.pose.position.z = 0.8;
-    pose.pose.orientation.z = 0;
-    pose.pose.orientation.w = 1;
-    
+    //send a few setpoints before starting
+    for(int i = 100; ros::ok() && i > 0; --i){
+        local_pos_pub.publish(pose);
+        ros::spinOnce();
+        rate.sleep();
+    }
+
     geometry_msgs::TwistStamped no_cmd_twist;
-    no_cmd_twist.twist.linear.x = 0;
-    no_cmd_twist.twist.linear.y = 0;
-    no_cmd_twist.twist.linear.z = -0;
+    no_cmd_twist.twist.linear.x = 0.0;
+    no_cmd_twist.twist.linear.y = 0.0;
+    no_cmd_twist.twist.linear.z = -0.0;
     no_cmd_twist.twist.angular.z = 0.0;
 
     geometry_msgs::TwistStamped down_twist;
-    down_twist.twist.linear.x = 0;
-    down_twist.twist.linear.y = 0;
-    down_twist.twist.linear.z = -0.3;
+    down_twist.twist.linear.x = 0.0;
+    down_twist.twist.linear.y = 0.0;
+    down_twist.twist.linear.z = -0.2;
     down_twist.twist.angular.z = 0.0;
 
     mavros_msgs::SetMode offb_set_mode;
@@ -146,6 +155,8 @@ int main(int argc, char **argv) {
             pose.pose.position.x = 0;
             pose.pose.position.y = 0;
             pose.pose.position.z = 0.8;
+            pose.pose.orientation.x = 0.0;
+            pose.pose.orientation.y = 0.0;
             pose.pose.orientation.z = 0.0;
             pose.pose.orientation.w = 1.0;
         }

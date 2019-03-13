@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
 	ros::ServiceClient set_mode_client = nh.serviceClient<mavros_msgs::SetMode>("mavros/set_mode");
   
 	//the setpoint publishing rate MUST be faster than 2Hz
-	ros::Rate rate(30);
+	ros::Rate rate(100);
 	ibvs_request_time = ros::Time::now();
 	// wait for FCU connection
 	while(ros::ok() && !current_state.connected){
@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
 	}
 
 	//send a few setpoints before starting
-	for(int i = 30; ros::ok() && i > 0; --i){
+	for(int i = 100; ros::ok() && i > 0; --i){
 		take_off();
 		ros::spinOnce();
 		rate.sleep();
@@ -95,6 +95,7 @@ int main(int argc, char **argv) {
 
 	ros::Time last_request = ros::Time::now();
     bool land = false;
+
 	while(ros::ok()){
         if (land){
             ROS_INFO("LAND!");

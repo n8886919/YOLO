@@ -138,7 +138,7 @@ class PID_GUI(object):
 class IBVS_Controller():
     def __init__(self):
         self.LOSS_TARGET_MAX = 30
-        self.car_threshold = 0.2
+        self.car_threshold = 0.1
         self.gain_default = IBVS_PARAMETER['gain_default']
 
         self.gain_keys = []
@@ -228,8 +228,8 @@ class IBVS_Controller():
 
         else:
             local_x, local_y, vz, vw = self._get_pid_output()
-            local_x = self._vel_bound(local_x, 1, 0.05)
-            local_y = self._vel_bound(local_y, 1, 0.05)
+            local_x = self._vel_bound(local_x, 0.2, 0.05)
+            local_y = self._vel_bound(local_y, 0.2, 0.05)
 
             global_x = (local_x*math.cos(self.uav_heading) -
                         local_y*math.sin(self.uav_heading))
@@ -357,15 +357,36 @@ cos_offset = np.array([math.cos(x*math.pi/180) for x in range(0, 360, _step)])
 sin_offset = np.array([math.sin(x*math.pi/180) for x in range(0, 360, _step)])
 
 
+vec_queue = []  # 5*2 list
+
+
 def get_erry(x, desire_azimuth):
+    global vec_queue
+
     prob = np.exp(x)/np.sum(np.exp(x), axis=0)
     c = sum(cos_offset*prob)
     s = sum(sin_offset*prob)
     vec_ang = math.atan2(s, c)
     vec_rad = (s**2 + c**2)**0.5
-    print(vec_ang)
 
-    erry = vec_ang - desire_azimuth * math.pi / 180
+    # moving average
+    if len(vec_queue) == 5:
+        for i in range(len(vec_queue)-1):
+            vec_queue[i] = vec_queue[i+1]
+        vec_queue[4] = [vec_ang, vec_rad]
+    else:
+        vec_queue.append([vec_ang, vec_rad])
+
+    moving_sum = 0.0
+    weight_sum = 0.00001
+    for i in vec_queue:
+        moving_sum += i[0]*i[1]
+        weight_sum += i[1]
+    moving_avg = moving_sum / weight_sum
+    # moving average
+    print(vec_queue)
+    print(moving_avg)
+    erry = moving_avg - desire_azimuth * math.pi / 180
 
     if erry < -math.pi:
         erry += 2 * math.pi

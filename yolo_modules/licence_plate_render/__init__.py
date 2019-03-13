@@ -97,8 +97,8 @@ class LPGenerator():
 
     def random_projection_LP_6D(self, LP, in_size, out_size, r_max):
         Z = np.random.uniform(low=1500., high=5000.)
-        X = (Z * 10 / 30.) * np.random.uniform(low=-1, high=1)
-        Y = (Z * 8 / 30.) * np.random.uniform(low=-1, high=1)
+        X = (Z * 9 / 30.) * np.random.uniform(low=-1, high=1)
+        Y = (Z * 7 / 30.) * np.random.uniform(low=-1, high=1)
         r1 = np.random.uniform(low=-1, high=1) * r_max[0] * math.pi / 180.
         r2 = np.random.uniform(low=-1, high=1) * r_max[1] * math.pi / 180.
         r3 = np.random.uniform(low=-1, high=1) * r_max[2] * math.pi / 180.

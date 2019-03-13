@@ -28,6 +28,7 @@ from yolo_modules import yolo_gluon
 
 os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
 os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
+LP_threshold = 0.1
 
 
 def main():
@@ -189,10 +190,10 @@ class LicencePlateDetectioin():
         step = 2**self.num_downsample
         h_feature_max = self.size[0] / 2**self.num_downsample - 1
         w_feature_max = self.size[1] / 2**self.num_downsample - 1
-
         h_feature = np.clip(int(L[8].asnumpy()/step), 0, h_feature_max)
         w_feature = np.clip(int(L[7].asnumpy()/step), 0, w_feature_max)
-
+        #print(h_feature_max, w_feature_max)
+        #print(h_feature, w_feature)
         t_X = L[1] / 1000.
         t_Y = L[2] / 1000.
         t_Z = L[3] / 1000.
@@ -206,6 +207,7 @@ class LicencePlateDetectioin():
         t_r3 = yolo_gluon.nd_inv_sigmoid(L[6] / r3_max / 2. + 0.5)
 
         label = nd.concat(t_X, t_Y, t_Z, t_r1, t_r2, t_r3, dim=-1)
+
         return (h_feature, w_feature), label
 
     def _loss_mask_LP(self, label_batch, gpu_index):
@@ -304,7 +306,7 @@ class LicencePlateDetectioin():
         # -------------------- main loop -------------------- #
         self.backward_counter = 0
         while True:
-            if (self.backward_counter % 10 == 0 or 'bg' not in locals()):
+            if (self.backward_counter % 3 == 0 or 'bg' not in locals()):
                 bg = yolo_gluon.ImageIter_next_batch(bg_iter)
                 bg = bg.as_in_context(self.ctx[0]) / 255.
 
@@ -317,7 +319,6 @@ class LicencePlateDetectioin():
                 self._train_batch_LP(batch_xs, batch_ys)
 
             elif mode == 'val':
-                # batch_out = self.net.forward(is_train=False, data=imgs)
                 batch_out = self.net(imgs)
                 pred = self.predict_LP(batch_out)
 
@@ -332,7 +333,8 @@ class LicencePlateDetectioin():
                     img, pred[1:])
 
                 yolo_cv.matplotlib_show_img(ax, img)
-
+                print(labels)
+                print(pred)
                 raw_input('--------------------------------------------------')
 
     def slice_out(self, x):
@@ -392,7 +394,7 @@ class LicencePlateDetectioin():
 
         pose = Float32MultiArray()
         rate = rospy.Rate(100)
-        print('Image Topic: /YOLO/clipped_LP')
+        print('Image Topic: %s' % self.topic)
         print('checkpoint file: %s' % self.export_file)
 
         # -------------------- video record -------------------- #
@@ -406,7 +408,6 @@ class LicencePlateDetectioin():
         shape = (1, 3, 320, 512)
         #yolo_gluon.test_inference_rate(self.net, shape, cycles=100, ctx=mxnet.gpu(0))
 
-        self.lock = threading.Lock()
         threading.Thread(target=self._net_thread).start()
 
         while not rospy.is_shutdown():
@@ -421,7 +422,7 @@ class LicencePlateDetectioin():
             pred = self.predict_LP(self.net_out)
             ps_pub.publish(pose)
 
-            if pred[0] > 0.1:
+            if pred[0] > LP_threshold:
                 img, clipped_LP = pjct_6d.add_edges(img, pred[1:])
                 clipped_LP = self.bridge.cv2_to_imgmsg(clipped_LP, 'bgr8')
                 LP_pub.publish(clipped_LP)
@@ -456,7 +457,6 @@ class LicencePlateDetectioin():
             self.net_out = net_out
 
     def _image_callback(self, img):
-
         self.img = self.bridge.imgmsg_to_cv2(img, "bgr8")
 
     def _get_frame(self):

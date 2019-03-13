@@ -260,7 +260,6 @@ class Video(object):
             if 'net_dep' in locals():
                 self.net_dep = net_dep
 
-
             self.net_img_time = net_img_time
             self.net_img_seq = net_img_seq
             now = rospy.get_rostime()

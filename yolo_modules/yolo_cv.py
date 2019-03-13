@@ -3,8 +3,10 @@ import cv2
 import numpy as np
 import math
 import matplotlib
+
 import PIL
 matplotlib.use('TkAgg')
+import matplotlib.pyplot
 # import matplotlib.pyplot as matplotlib.pyplot
 
 _color = [

@@ -61,7 +61,7 @@ def video_Parser():
         "--show",
         dest="show", default=1, type=int,
         help="show processed image")
-    '''
+
     parser.add_argument(
         "--LP",
         dest="LP", default=1, type=int,
@@ -71,7 +71,7 @@ def video_Parser():
         "--car",
         dest="car", default=1, type=int,
         help="add car box")
-
+    '''
     parser.add_argument(
         "--weight",
         dest="weight", default=None,

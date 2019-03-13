@@ -17,7 +17,7 @@ from utils import *
 from render_car import *
 
 
-render_thread_pre_load = False
+render_thread_pre_load = True
 export_onnx = False
 freiburg_path = ('/media/nolan/SSD1/YOLO_backup/'
                  'freiburg_static_cars_52_v1.1')
@@ -510,7 +510,7 @@ class YOLO(object):
                 if self.use_fp16:
                     imgs = self.fp32_2_fp16([imgs])
 
-                x = self.net(imgs[0])
+                x = self.net(imgs)
                 outs = self.predict(x)
 
                 pred = nd.zeros((self.batch_size, 4))
@@ -774,7 +774,7 @@ class YOLO(object):
     def valid_Nima_plot(self):
         import matplotlib.pyplot as plt
         filter_index = [14, 17]
-        path = (freiburg_path + '/result_v4/annotations')
+        path = (freiburg_path + '/result_%s/annotations' % self.version)
         plot_path = os.path.join(path, 'plot')
         if not os.path.exists(plot_path):
             os.makedirs(plot_path)
