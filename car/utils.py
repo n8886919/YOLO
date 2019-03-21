@@ -5,6 +5,7 @@ from gluoncv.model_zoo.yolo.yolo3 import YOLODetectionBlockV3
 from gluoncv.model_zoo.yolo.yolo3 import _upsample
 
 from yolo_modules import basic_yolo
+from yolo_modules import yolo_cv
 
 
 def yolo_Parser():
@@ -15,22 +16,11 @@ def yolo_Parser():
 
     # -------------------- select options -------------------- #
     parser.add_argument("--gpu", help="gpu index", dest="gpu", default="0")
-    parser.add_argument(
-        "--record",
-        dest="record", default=1, type=int,
-        help="record to tensorboard or not")
-
-    parser.add_argument(
-        "--tensorrt",
-        dest="tensorrt", default=0, type=int,
-        help="use Tensor_RT or not")
-
-    parser.add_argument(
-        "--weight",
-        dest="weight", default=None,
-        help="pretrain weight file")
+    parser.add_argument("--record", dest="record", default=1, type=int, help="record to tensorboard or not")
+    parser.add_argument("--weight", dest="weight", default=None, help="pretrain weight file")
 
     parser.parse_args().record = bool(parser.parse_args().record)
+
     return parser.parse_args()
 
 
@@ -39,73 +29,18 @@ def video_Parser():
     parser.add_argument("version", help="v1")
 
     # -------------------- select options -------------------- #
-    parser.add_argument("--mode", help="ignore this", dest="mode", default="video")
     parser.add_argument("--gpu", help="gpu index", dest="gpu", default="0")
 
-    parser.add_argument(
-        "--topic",
-        dest="topic", default="/usb_cam/image_raw",
-        help="ros topic to subscribe")
-
-    parser.add_argument(
-        "--dev",
-        dest="dev", default="ros",
-        help="ros or tx2 or video path or  camera index")
-
-    parser.add_argument(
-        "--radar",
-        dest="radar", default=0, type=int,
-        help="show radar plot")
-
-    parser.add_argument(
-        "--show",
-        dest="show", default=1, type=int,
-        help="show processed image")
-
-    parser.add_argument(
-        "--LP",
-        dest="LP", default=1, type=int,
-        help="show affined licence plate, if show, add LP box")
-
-    parser.add_argument(
-        "--car",
-        dest="car", default=1, type=int,
-        help="add car box")
-    '''
-    parser.add_argument(
-        "--weight",
-        dest="weight", default=None,
-        help="pretrain weight path")
-    '''
-    parser.add_argument(
-        "--flip",
-        dest="flip", default=3, type=int,
-        help="1: left-right, 0: top-down, -1: 0&&1")
-
-    parser.add_argument(
-        "--clip_h",
-        dest="clip_h", default=1., type=float,
-        help="height_ratio")
-
-    parser.add_argument(
-        "--clip_w",
-        dest="clip_w", default=1., type=float,
-        help="width_ratio")
-
-    parser.add_argument(
-        "--tensorrt",
-        dest="tensorrt", default=0, type=int,
-        help="use Tensor_RT or not")
-
-    parser.add_argument(
-        "--record",
-        dest="record", default=0, type=int,
-        help="record or not")
+    parser.add_argument("--radar", dest="radar", default=0, type=int, help="show radar plot")
+    parser.add_argument("--LP", dest="LP", default=1, type=int, help="show affined licence plate, if show, add LP box")
+    parser.add_argument("--car", dest="car", default=1, type=int, help="add car box")
+    parser.add_argument("--record", dest="record", default=0, type=int, help="record or not")
 
     parser.parse_args().radar = bool(parser.parse_args().radar)
-    parser.parse_args().show = bool(parser.parse_args().show)
     parser.parse_args().LP = bool(parser.parse_args().LP)
 
+    parser = yolo_cv.add_video_parser(parser)
+    parser.mode = 'video'
     return parser.parse_args()
 
 

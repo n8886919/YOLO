@@ -1,6 +1,7 @@
 basic_yolo.pyc
 yolo_cv.pyc
 yolo_gluon.pyc
+tensorrt_module.pyc
 global_variable.pyc
 __pycache__
 __init__.pyc

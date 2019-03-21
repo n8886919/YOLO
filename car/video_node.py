@@ -183,10 +183,9 @@ class Video(object):
             self.visualize(pred_car, net_img)
 
     def _get_frame(self):
-        dev = self.dev
-
         print(global_variable.green)
         print('Start OPENCV Video Capture Thread')
+        dev = self.dev
 
         if dev == 'jetson':
             print('Image Source: Jetson OnBoard Camera')
@@ -203,8 +202,7 @@ class Video(object):
 
         else:
             print(global_variable.red)
-            print(('dev should be (jetson) or '
-                   '(video_path) or (device_index)'))
+            print('dev should be jetson / video_path(mp4, avi, m2ts) / device_index')
             sys.exit(0)
 
         print(global_variable.reset_color)

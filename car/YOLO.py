@@ -73,7 +73,6 @@ class YOLO(object):
             self.net = yolo_gluon.init_executor(
                 self.export_folder,
                 self.size, self.ctx[0],
-                use_tensor_rt=args.tensorrt,
                 fp16=self.use_fp16)
 
         # -------------------- Use gluon Block !!! -------------------- #
@@ -670,13 +669,8 @@ class YOLO(object):
             raw_input('next')
 
     def export(self):
-        yolo_gluon.export(
-            self.net,
-            (1, 3, self.size[0], self.size[1]),
-            self.ctx[0],
-            self.export_folder,
-            onnx=export_onnx,
-            fp16=self.use_fp16)
+        shape = (1, 3, self.size[0], self.size[1])
+        yolo_gluon.export(self.net, shape, self.ctx[0], self.export_folder, fp16=self.use_fp16)
 
     def valid_Nima(self):
         '''

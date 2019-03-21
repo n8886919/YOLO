@@ -242,7 +242,7 @@ def init_executor(export_folder, size, ctx, use_tensor_rt=False, step=0, fp16=Fa
     return executor
 
 
-def export(net, batch_shape, ctx, export_folder, onnx=False, epoch=0, fp16=False):
+def export(net, batch_shape, ctx, export_folder, onnx=True, epoch=0, fp16=False):
     data = nd.zeros(batch_shape).as_in_context(ctx)
 
     if fp16:
@@ -405,3 +405,8 @@ def nd_label_batch_ltrb2yxhw(label_batch):
     new_label_batch[:, :, 3] = label_batch[:, :, 2] - label_batch[:, :, 0]
 
     return new_label_batch
+
+
+def switch_print(content, switch):
+    if switch:
+        print(content)

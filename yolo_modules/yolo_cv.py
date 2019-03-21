@@ -7,7 +7,6 @@ import matplotlib
 import PIL
 matplotlib.use('TkAgg')
 import matplotlib.pyplot
-# import matplotlib.pyplot as matplotlib.pyplot
 
 _color = [
     # BGR?
@@ -156,6 +155,47 @@ class PILImageEnhance():
         G = kwargs['G'] if 'G' in kwargs else self.G
         img = img.filter(PIL.ImageFilter.GaussianBlur(radius=np.random.rand()*G))
         return img
+
+
+def add_video_parser(parser):
+    parser.add_argument(
+        "--trt",
+        dest="trt", default=0, type=int,
+        help="use TensorRT or not")
+
+    parser.add_argument(
+        "--topic",
+        dest="topic", default="/usb_cam/image_raw",
+        help="ros topic to subscribe")
+
+    parser.add_argument(
+        "--dev",
+        dest="dev", default="ros",
+        help="ros or tx2 or video path or device_index")
+
+    parser.add_argument(
+        "--flip",
+        dest="flip", default=3, type=int,
+        help="1: left-right, 0: top-down, -1: 0&&1")
+
+    parser.add_argument(
+        "--clip_h",
+        dest="clip_h", default=1., type=float,
+        help="height_ratio")
+
+    parser.add_argument(
+        "--clip_w",
+        dest="clip_w", default=1., type=float,
+        help="width_ratio")
+
+    parser.add_argument(
+        "--show",
+        dest="show", default=1, type=int,
+        help="show processed image")
+
+    parser.parse_args().show = bool(parser.parse_args().show)
+
+    return parser
 
 
 def init_matplotlib_figure():
