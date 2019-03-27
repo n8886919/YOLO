@@ -2,34 +2,36 @@
 # YOLOv3 For ALPR And VOR
 ALPR: Automatic License Plate  / VOR: Vehicle Orientation Recognition Recognition
 ## Contents
-[TOC]
++ [Demo](#Demo)
++ [Installation](#Installation)
++ [Projects](#Projects)
+  + [Licence-Plate-Detection](#Licence-Plate-Detection)
+  + [Licence-Plate-Recognition](#Licence-Plate-Recognition)
+  + [Vehicle-Orientation-Recognition](#Vehicle-Orientation-Recognition)
+  + [VOR+LPD](#VOR+LPD)
 ## Demo
 
-### [ALPR室內測試影片連結](https://www.youtube.com/watch?v=fkOfiv5M6co)
-![](https://i.imgur.com/7vC1mX4.png)
+**[ALPR室內測試影片連結](https://www.youtube.com/watch?v=fkOfiv5M6co)**
+<img src="https://i.imgur.com/7vC1mX4.png" width=50% height="50%" />
 
 ---
-### [ALPR室外測試影片連結](https://youtu.be/6XFVttX3pAU?t=10)
-![](https://i.imgur.com/RcfgStm.png)
+**[ALPR室外測試影片連結](https://youtu.be/6XFVttX3pAU?t=10)**
+<img src="https://i.imgur.com/RcfgStm.png" width=50% height="50%" />
 
 ---
-### [模型車姿態辨識影片連結](https://www.youtube.com/watch?v=cGhPUM9HWag&t=10s)
-![](https://i.imgur.com/JHLEKpp.png)
-[](https://www.youtube.com/watch?v=RME7ldMSddQ)
+**[模型車姿態辨識影片連結](https://www.youtube.com/watch?v=cGhPUM9HWag&t=10s)**
+<img src="https://i.imgur.com/JHLEKpp.png" width=50% height="50%" />
 
 ---
-### [驗證姿態辨識影片連結](https://www.youtube.com/watch?v=RME7ldMSddQ&t=3)
-![](https://i.imgur.com/OJuFdih.png)
+**[驗證姿態辨識影片連結](https://www.youtube.com/watch?v=RME7ldMSddQ&t=3)**
+<img src="https://i.imgur.com/OJuFdih.png" width=50% height="50%" />
 
 ---
-### [ALPR+IBVS+VOR](https://youtu.be/uX_UBp0ZFNk)
-![](https://i.imgur.com/baNtXRU.png)
+**[ALPR+IBVS+VOR](https://youtu.be/uX_UBp0ZFNk)**
+<img src="https://i.imgur.com/baNtXRU.png" width=50% height="50%" />
 
 ---
 ## Installation
-
-
-
 + [Install ROS](http://wiki.ros.org/ROS/Installation)(Not necessary for train/valid)
 + Install ROS camera package(Not necessary for train/valid)
 ```sh
@@ -53,7 +55,17 @@ pip install -r requirements.txt
 + [Install tensorrt](https://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html#installing-tar)(或是把用到他的地方都註解掉)
 
 + [Download Test  Video](https://drive.google.com/file/d/1dYkultUic8WBqNL02yzqRZjyujPuWGA1/view?usp=sharing)
-# Troubleshooting
+## Projects
+### [Licence-Plate-Detection](https://github.com/n8886919/YOLO/tree/master/licence_plate)
+預測車牌在空間中的位置與姿態,並將車牌以此姿態投影至相機平面,找出邊界框,最後將邊界框變形回長方形,以利後續辨識文字。由於需要知道車牌姿態來訓練,因此訓練資料完全以合成方式產生。
+可匯出網路成ONNX格式,以TensorRT進行推斷,在[Jetson Xavier](https://www.nvidia.com/zh-tw/autonomous-machines/jetson-agx-xavier)約可達50FPS
+### [Licence-Plate-Recognition](https://github.com/n8886919/YOLO/tree/master/OCR)
+用於辨識車牌偵測後變形回長方形車牌的文字。
+### [Vehicle-Orientation-Recognition](https://github.com/n8886919/YOLO/tree/master/car)
+以[Blender合成](https://github.com/n8886919/RenderForCar)車輛訓練圖片,用於預測車輛方位角、俯角與邊界框。
+### [VOR+LPD](https://github.com/n8886919/YOLO/tree/master/car_and_LP)
+<!--
+## Troubleshooting
 if:
 :::danger
 [ERROR] [1552911199.414362]: bad callback: <bound method LicencePlateDetectioin._image_callback of <__main__.LicencePlateDetectioin instance at 0x7fd1aa0e1200>>
@@ -74,10 +86,4 @@ try:
 ```sh
 sudo apt-get remove libopenblas-base
 ```
-## [Licence Plate Detection](https://github.com/n8886919/YOLO/tree/master/licence_plate)
-預測車牌在空間中的位置與姿態,並將車牌以此姿態投影至相機平面,找出邊界框,最後將邊界框變形回長方形,以利後續辨識文字。由於需要知道車牌姿態來訓練,因此訓練資料完全以合成方式產生。
-可匯出網路成ONNX格式,以TensorRT進行推斷,在[Jetson Xavier](https://www.nvidia.com/zh-tw/autonomous-machines/jetson-agx-xavier)約可達50FPS
-## [Licence Plate Recognition](https://github.com/n8886919/YOLO/tree/master/OCR)
-用於辨識車牌偵測後變形回長方形車牌的文字。
-## [Vehicle Orientation Recognition](https://github.com/n8886919/YOLO/tree/master/car)
-以[Blender合成](https://github.com/n8886919/RenderForCar)車輛訓練圖片,用於預測車輛方位角、俯角與邊界框。
+-->

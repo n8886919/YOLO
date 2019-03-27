@@ -10,8 +10,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Float32MultiArray
 
 from yolo_modules.licence_plate_render import ProjectRectangle6D
-from yolo_modules.tensorrt_module import do_inference_wrapper
-from yolo_modules.tensorrt_module import get_engine_wrapper
+
 from yolo_modules.yolo_cv import cv2_flip_and_clip_frame
 from yolo_modules import yolo_gluon
 from LP_detection import LicencePlateDetectioin, Parser
@@ -39,6 +38,8 @@ def video(args):
 
     if args.trt:  # tensorRT Inference can't in thread
         import numpy as np
+        from yolo_modules.tensorrt_module import do_inference_wrapper
+        from yolo_modules.tensorrt_module import get_engine_wrapper
         engine_wrapper = get_engine_wrapper(
             args.version + '/export/onnx/out.onnx',
             args.version + '/export/onnx/out.trt')

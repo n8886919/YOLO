@@ -1,7 +1,8 @@
 # Vehicle Orientation Recognition(VOR)
 <!--[VOR Weight Link v1](https://drive.google.com/file/d/15N1DZMfx1FsYSp-y597U-pQ3UqhQDZF4/view?usp=sharing)
 [VOR Weight Link v2](https://drive.google.com/file/d/1MjkZuel-bEtuY6qEKOAreLbYO27H6rtG/view?usp=sharing)-->
-[VOR Weight Link v4](https://drive.google.com/file/d/1q5gFMpZopVaN77bGGO0z9-MSFz1Dux_7/view?usp=sharing)
++ [VOR Weight Link v4](https://drive.google.com/file/d/1q5gFMpZopVaN77bGGO0z9-MSFz1Dux_7/view?usp=sharing)
++ [Download Test  Video](https://drive.google.com/file/d/1dYkultUic8WBqNL02yzqRZjyujPuWGA1/view?usp=sharing)
 ## Video Demo
 ```sh
 cd <$git clone path>
