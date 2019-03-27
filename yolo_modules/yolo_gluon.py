@@ -367,6 +367,16 @@ def nd_inv_sigmoid(x):
     return -nd.log(1/x - 1)
 
 
+def np_sigmoid(x):
+
+    return 1/(1+numpy.exp(-x))
+
+
+def np_inv_sigmoid(x):
+
+    return -numpy.log(1/x - 1)
+
+
 def get_ctx(gpu):
     '''
     Parameter:

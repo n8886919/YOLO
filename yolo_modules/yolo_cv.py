@@ -194,6 +194,7 @@ def add_video_parser(parser):
         help="show processed image")
 
     parser.parse_args().show = bool(parser.parse_args().show)
+    parser.parse_args().trt = bool(parser.parse_args().trt)
 
     return parser
 

@@ -1,19 +1,11 @@
 #! usr/bin/python
 import argparse
-import cv2
 import datetime
 import math
 import numpy as np
 import os
 import sys
-import threading
-import time
 import yaml
-
-import rospy
-from std_msgs.msg import Float32MultiArray, MultiArrayDimension
-from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
 
 import mxboard
 import mxnet
@@ -25,23 +17,15 @@ from yolo_modules import global_variable
 from yolo_modules import licence_plate_render
 from yolo_modules import yolo_cv
 from yolo_modules import yolo_gluon
-from yolo_modules import tensorrt_module
-
 
 os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
 os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
-
-video_verbose = False
-video_threshold = 0.5
-video_inference_mode = 'trt'
-#video_record_origin = False
-#video_record_processed = False
 
 
 def main():
     args = Parser()
     LP_detection = LicencePlateDetectioin(args)
-    available_mode = ['train', 'valid', 'export', 'video', 'trt']
+    available_mode = ['train', 'valid', 'export']
     assert args.mode in available_mode, \
         'Available Modes Are {}'.format(available_mode)
 
@@ -125,31 +109,26 @@ class LicencePlateDetectioin():
         self.ctx = yolo_gluon.get_ctx(args.gpu)
         self.export_file = args.version + '/export/'
 
-        if args.mode in ['train', 'valid', 'export']:
-            self.backup_dir = os.path.join(args.version, 'backup')
-            self.net = LPDenseNet(
-                self.num_init_features,
-                self.growth_rate,
-                self.block_config,
-                classes=self.LP_num_class)
+        assert args.mode in ['train', 'valid', 'export', 'video']
+        if args.mode == 'video':
+            return
 
-            if args.weight is None:
-                args.weight = yolo_gluon.get_latest_weight_from(
-                    self.backup_dir)
+        self.backup_dir = os.path.join(args.version, 'backup')
+        self.net = LPDenseNet(
+            self.num_init_features,
+            self.growth_rate,
+            self.block_config,
+            classes=self.LP_num_class)
 
-            yolo_gluon.init_NN(self.net, args.weight, self.ctx)
+        if args.weight is None:
+            args.weight = yolo_gluon.get_latest_weight_from(
+                self.backup_dir)
 
-            if args.mode == 'train':
-                self.record = args.record
-                self._init_train()
+        yolo_gluon.init_NN(self.net, args.weight, self.ctx)
 
-        else:
-            self.trt = args.trt
-            self.topic = args.topic
-            self.dev = args.dev
-            self.flip = args.flip
-            self.clip = (args.clip_h, args.clip_w)
-            self.show = args.show
+        if args.mode == 'train':
+            self.record = args.record
+            self._init_train()
 
     def train(self):
 
@@ -163,74 +142,37 @@ class LicencePlateDetectioin():
         shape = (1, 3, self.size[0], self.size[1])
         yolo_gluon.export(self.net, shape, self.ctx[0], self.export_file, onnx=1, epoch=0)
 
-    def video(self):
-        h, w = self.size
-        assert video_inference_mode in ['trt', 'mx'], ('mode should be trt/mx')
-        if video_inference_mode == 'mx':
-            mx_resize = mxnet.image.ForceResizeAug((w, h), interp=2)
-            net = yolo_gluon.init_executor(self.export_file, (h, w), self.ctx[0])
-            yolo_gluon.test_inference_rate(net, (1, 3, h, w), cycles=100, ctx=self.ctx[0])
-
-        elif video_inference_mode == 'trt':  # tensorRT Inference can't in thread
-            engine_wrapper = tensorrt_module.get_engine_wrapper(
-                self.version + '/export/onnx/out.onnx',
-                self.version + '/export/onnx/out.trt')
-
-        rospy.init_node("LP_Detection", anonymous=True)
-        threading.Thread(target=self._video_thread).start()
-
-        while not rospy.is_shutdown():
-            if not hasattr(self, 'img') or self.img is None:
-                print('Wait For Image')
-                time.sleep(1.0)
-                continue
-            try:
-                net_img = self.img.copy()  # (480, 640, 3), np.float32
-                net_start_time = time.time()
-
-                if video_inference_mode == 'mx':
-                    nd_img = yolo_gluon.cv_img_2_ndarray(net_img, self.ctx[0], mxnet_resize=mx_resize)
-                    net_out = net.forward(is_train=False, data=nd_img)[0]
-                    net_out[-1].wait_to_read()
-
-                elif video_inference_mode == 'trt':
-                    # if cuMemcpyHtoDAsync failed: invalid argument, check input image size
-                    trt_img = cv2.resize(net_img, (w, h))  # (320, 512, 3)
-                    trt_outputs = tensorrt_module.do_inference_wrapper(engine_wrapper, trt_img)
-                    net_out = nd.array(trt_outputs).reshape((1, 10, 10, 16))
-
-                yolo_gluon.switch_print(time.time()-net_start_time, video_verbose)
-                self.net_img = net_img
-                self.net_out = net_out
-
-            except Exception as e:
-                print(e)
-                rospy.signal_shutdown(e)
-
     def predict_LP(self, batch_out):
-        batch_out = self.slice_out(batch_out)
-        out = nd.concat(nd.sigmoid(batch_out[0]), *batch_out[1:], dim=-1)[0]
-        # (10L, 16L, 10L)
+        use_np = True if type(batch_out) == np.ndarray else False
+        out = batch_out.transpose((0, 2, 3, 1))[0]
+        # (10L, 16L, features)
         best_index = out[:, :, 0].reshape(-1).argmax(axis=0)
-        out = out.reshape((-1, 10))
-        pred = out[best_index].reshape(-1)  # best out
+        out = out.reshape((-1, self.LP_slice_point[-1]))
 
+        pred = out[best_index].asnumpy()[0] if not use_np else out[best_index]
+
+        pred[0] = yolo_gluon.np_sigmoid(pred[0])
         pred[1:4] *= 1000
-
         for i in range(3):
-            p = (nd.sigmoid(pred[i+4]) - 0.5) * 2 * self.LP_r_max[i]
+            p = (yolo_gluon.np_sigmoid(pred[i+4]) - 0.5) * 2 * self.LP_r_max[i]
             pred[i+4] = p * math.pi / 180.
-        return pred.asnumpy()
 
-    def slice_out(self, x):
-            x = x.transpose((0, 2, 3, 1))
-            i = 0
-            outs = []
-            for pt in self.LP_slice_point:
-                outs.append(x.slice_axis(begin=i, end=pt, axis=-1))
-                i = pt
+        return pred
 
-            return outs
+    def slice_out(self, x, use_np=False):
+        x = x.transpose((0, 2, 3, 1))
+        i = 0
+        outs = []
+        for pt in self.LP_slice_point:
+            if use_np:
+                y = x[:, :, :, i:pt]
+            else:
+                y = x.slice_axis(begin=i, end=pt, axis=-1)
+
+            outs.append(y)
+            i = pt
+
+        return outs
 
     # -------------------- Train -------------------- #
     def _train_or_valid(self, mode):
@@ -416,95 +358,6 @@ class LicencePlateDetectioin():
         r = self.HB_loss(by_[3], by[3], mask * self.scale['LP_r'])
         c = self.CE_loss(by_[4], by[4], mask * self.scale['LP_class'])
         return (s, xy, z, r, c)
-
-    # -------------------- Video -------------------- #
-    def _video_thread(self, record=False):
-        pjct_6d = licence_plate_render.ProjectRectangle6D(int(380*1.05), int(160*1.05))
-
-        self.bridge = CvBridge()
-        LP_pub = rospy.Publisher(self.pub_clipped_LP, Image, queue_size=0)
-        ps_pub = rospy.Publisher(self.pub_LP, Float32MultiArray, queue_size=0)
-
-        if self.dev == 'ros':
-            rospy.Subscriber(self.topic, Image, self._image_callback)
-            print('Image Topic: %s' % self.topic)
-        else:
-            threading.Thread(target=self._get_frame).start()
-
-        pose_msg = Float32MultiArray()
-
-        # -------------------- video record -------------------- #
-        '''
-        if record:
-            start_time = datetime.datetime.now().strftime("%m-%dx%H-%M")
-            out_file = os.path.join('video', 'LPD_ % s.avi' % start_time)
-            fourcc = cv2.VideoWriter_fourcc(*'XVID')
-            v_size = (640, 480)
-            video_out = cv2.VideoWriter(out_file, fourcc, 30, v_size)
-        '''
-        rate = rospy.Rate(30)
-        while not rospy.is_shutdown():
-            if not hasattr(self, 'net_out') or not hasattr(self, 'net_img'):
-                time.sleep(1)
-                print('Wait For Net')
-                continue
-
-            img = self.net_img.copy()
-            net_out = self.net_out.copy()
-            pred = self.predict_LP(self.net_out)
-
-            ps_pub.publish(pose_msg)
-
-            if pred[0] > video_threshold:
-                img, clipped_LP = pjct_6d.add_edges(img, pred[1:])
-                clipped_LP = self.bridge.cv2_to_imgmsg(clipped_LP, 'bgr8')
-                LP_pub.publish(clipped_LP)
-
-            if self.show:
-                cv2.imshow('img', img)
-                cv2.waitKey(1)
-            #video_out.write(ori_img)
-            #rate.sleep()
-
-    def _image_callback(self, img):
-
-        self.img = self.bridge.imgmsg_to_cv2(img, "bgr8")
-
-    def _get_frame(self):
-        print(global_variable.green)
-        print('Start OPENCV Video Capture Thread')
-        dev = self.dev
-
-        if dev == 'jetson':
-            print('Image Source: Jetson OnBoard Camera')
-            cap = jetson_onboard_camera(640, 360, dev)
-
-        elif dev.split('.')[-1] in ['mp4', 'avi', 'm2ts']:
-            print('Image Source: ' + dev)
-            cap = cv2.VideoCapture(dev)
-            rate = rospy.Rate(30)
-
-        elif dev.isdigit() and os.path.exists('/dev/video' + dev):
-            print('Image Source: /dev/video' + dev)
-            cap = cv2.VideoCapture(int(dev))
-
-        else:
-            print(global_variable.red)
-            print('dev should be jetson / video_path(mp4, avi, m2ts) / device_index')
-            sys.exit(0)
-
-        print(global_variable.reset_color)
-        seq = 0
-        while not rospy.is_shutdown():
-            self.img_cb_time = rospy.get_rostime()
-            self.img_cb_seq = seq
-            self.ret, img = cap.read()
-            self.img = yolo_cv.cv2_flip_and_clip_frame(img, self.clip, self.flip)
-            seq += 1
-            if 'rate' in locals():
-                rate.sleep()
-
-        cap.release()
 
 
 if __name__ == '__main__':

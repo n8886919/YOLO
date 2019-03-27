@@ -5,19 +5,19 @@ import os
 import sympy
 import sys
 import time
-import PIL
 import yaml
 import numpy as np
 
 import matplotlib
+import PIL
 
 import mxnet
 from mxnet import gpu
 from mxnet import nd
 
+from yolo_modules import global_variable
 from yolo_modules import yolo_cv
 from yolo_modules import yolo_gluon
-from yolo_modules import global_variable
 
 
 class LPGenerator():

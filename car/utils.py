@@ -29,18 +29,18 @@ def video_Parser():
     parser.add_argument("version", help="v1")
 
     # -------------------- select options -------------------- #
+    parser.add_argument("--mode", help="video", dest="mode", default="video")
     parser.add_argument("--gpu", help="gpu index", dest="gpu", default="0")
 
     parser.add_argument("--radar", dest="radar", default=0, type=int, help="show radar plot")
     parser.add_argument("--LP", dest="LP", default=1, type=int, help="show affined licence plate, if show, add LP box")
     parser.add_argument("--car", dest="car", default=1, type=int, help="add car box")
     parser.add_argument("--record", dest="record", default=0, type=int, help="record or not")
+    parser = yolo_cv.add_video_parser(parser)
 
     parser.parse_args().radar = bool(parser.parse_args().radar)
     parser.parse_args().LP = bool(parser.parse_args().LP)
 
-    parser = yolo_cv.add_video_parser(parser)
-    parser.mode = 'video'
     return parser.parse_args()
 
 
@@ -55,8 +55,8 @@ class CarNet(basic_yolo.BasicYOLONet):
             x = stage(x)
             if i >= len(self.stages) - self.num_pyrmaid_layers:
                 routes.append(x)
-
         # the YOLO output layers are used in reverse order, i.e., from very deep layers to shallow
+
         end = False
         for i, block, output in zip(range(len(routes)), self.yolo_blocks, self.yolo_outputs):
             if i >= len(routes) - 1:

@@ -670,7 +670,12 @@ class YOLO(object):
 
     def export(self):
         shape = (1, 3, self.size[0], self.size[1])
-        yolo_gluon.export(self.net, shape, self.ctx[0], self.export_folder, fp16=self.use_fp16)
+        yolo_gluon.export(self.net,
+                          shape,
+                          self.ctx[0],
+                          self.export_folder,
+                          onnx=False,
+                          fp16=self.use_fp16)
 
     def valid_Nima(self):
         '''
