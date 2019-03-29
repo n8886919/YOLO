@@ -57,6 +57,7 @@ def Parser():
 
 
 class LPDenseNet(mxnet.gluon.HybridBlock):
+    # copy from:
     # https://github.com/dmlc/gluon-cv/blob/3658339acbdfc78c2191c687e4430e3a673
     # 66b7d/gluoncv/model_zoo/densenet.py#L620
     # Densely Connected Convolutional Networks

@@ -7,6 +7,7 @@ export PYTHONPATH=$PYTHONPATH:$(pwd)
 cd licence_plate
 python LP_detection.py v2 export --weight <$LPD_weight_path>
 ```
+若要在Nvidia Jetson系列產品使用TensorRT,Jetpack版本須大於4.2
 ## Video Demo
 ```sh
 python LPD_video_node.py v2 video --dev <$video_path> (--trt 1 # tensorRT Inference)

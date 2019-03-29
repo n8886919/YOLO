@@ -145,7 +145,6 @@ def _image_callback(img):
 saver = {}
 def cv2_show_OCR_result(img, score, text):
     global save_counter, saver
-    print(score)
     # image/text/left-top/font type/size/color/width
     cv2.imshow('img', img)
     if len(text) == 7 and \
@@ -174,7 +173,7 @@ def cv2_show_OCR_result(img, score, text):
             saver[text] = 0
         else:
             saver[text] += 1
-        print(saver)
+        print(text)
     cv2.waitKey(1)
 
 

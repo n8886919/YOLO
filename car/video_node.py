@@ -46,7 +46,11 @@ def main(video):
 
 class Video(object):
     def __init__(self, args=None):
-        self.yolo = YOLO(args)
+        if args.version in['v1', 'v2', 'v3', 'v4']:
+            self.yolo = YOLO(args)
+        elif args.version in['v11']:
+            self.yolo = YOLO_dense(args)
+
         self.car_threshold = 0.5
         self._init(args)
 

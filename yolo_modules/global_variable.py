@@ -2,6 +2,8 @@
 import os
 
 training_data_path = '/media/nolan/SSD1'
+freiburg_path = ('/media/nolan/SSD1/YOLO_backup/'
+                 'freiburg_static_cars_52_v1.1')
 camera_parameter_path = os.path.dirname(os.path.abspath(__file__)) + \
     '/../camera_parameter/C310_4.yaml'
 

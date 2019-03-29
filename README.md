@@ -43,6 +43,9 @@ ALPR: Automatic License Plate  / VOR: Vehicle Orientation Recognition Recognitio
 git clone https://github.com/n8886919/YOLO_ALPR
 ```
 + Install Dependencies
+
+如果不是使用CUDA10,請將requirements.txt 中mxnet-cu100改成對應版本
+(ex: CUDA9.2->mxnet-cu92)
 ```sh
 # use Conda(optional)
 conda create --name yolo_test python=2.7 pip

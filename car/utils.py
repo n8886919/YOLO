@@ -4,6 +4,7 @@ import mxnet
 from gluoncv.model_zoo.yolo.yolo3 import YOLODetectionBlockV3
 from gluoncv.model_zoo.yolo.yolo3 import _upsample
 
+from licence_plate.LP_detection import LPDenseNet
 from yolo_modules import basic_yolo
 from yolo_modules import yolo_cv
 
@@ -42,6 +43,22 @@ def video_Parser():
     parser.parse_args().LP = bool(parser.parse_args().LP)
 
     return parser.parse_args()
+
+
+class CarDenseNet(LPDenseNet):
+    def __init__(self, num_init_features, growth_rate, block_config,
+                 bn_size=4, dropout=0, classes=1, num_anchors=1, **kwargs):
+        super(CarDenseNet, self).__init__(
+            num_init_features, growth_rate, block_config,
+            bn_size=bn_size, dropout=dropout, classes=classes, **kwargs)
+        self.num_anchors = num_anchors
+        self.channels = (classes + 7) / num_anchors
+
+    def hybrid_forward(self, F, x, *args):
+        x = self.features(x)
+        x = x.transpose((0, 2, 3, 1))
+        x = x.reshape((0, -1, self.num_anchors, self.channels))
+        return x
 
 
 class CarNet(basic_yolo.BasicYOLONet):

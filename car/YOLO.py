@@ -13,15 +13,10 @@ from mxboard import SummaryWriter
 from yolo_modules import yolo_gluon
 from yolo_modules import yolo_cv
 from yolo_modules import global_variable
-from utils import *
+
 from render_car import *
 
-
 render_thread_pre_load = True
-export_onnx = False
-freiburg_path = ('/media/nolan/SSD1/YOLO_backup/'
-                 'freiburg_static_cars_52_v1.1')
-
 available_mode = ['train',
                   'valid',
                   'export',
@@ -34,8 +29,15 @@ available_mode = ['train',
 
 
 def main():
+    from utils import yolo_Parser
+
     args = yolo_Parser()
-    yolo = YOLO(args)
+    if args.version in['v1', 'v2', 'v3', 'v4']:
+        yolo = YOLO(args)
+        yolo.export_onnx = False
+    elif args.version in['v11']:
+        yolo = YOLO_dense(args)
+        yolo.export_onnx = True
 
     assert args.mode in available_mode, \
         'Available Modes Are {}'.format(available_mode)
@@ -53,11 +55,9 @@ class YOLO(object):
         spec_path = os.path.join(args.version, 'spec.yaml')
         with open(spec_path) as f:
             spec = yaml.load(f)
-
         for key in spec:
             setattr(self, key, spec[key])
-
-        self.all_anchors = nd.array(self.all_anchors)
+        self.all_anchors = nd.array(self.all_anchors)  # anchors in each pyramid layers
         self.num_class = len(self.classes)
 
         self._init_step()
@@ -75,19 +75,19 @@ class YOLO(object):
                 self.size, self.ctx[0],
                 fp16=self.use_fp16)
 
+            return
+
         # -------------------- Use gluon Block !!! -------------------- #
-        elif (args.mode == 'export' or
-              args.mode == 'train' or
-              args.mode == 'render_and_train'):
+        # Export/Train/Render_And_Train
+        self.record = args.record
+        self._init_net(spec, args.weight)
 
-            self.record = args.record
-            self._init_net(spec, args.weight)
-
-            if args.mode != 'export':
-                self._init_train()
+        if args.mode in ['train', 'render_and_train']:
+            self._init_train()
 
     # -------------------- initialization Part -------------------- #
     def _init_net(self, spec, weight):
+        from utils import CarNet
         # (ONNX Error) Do not set num_sync_bn_devices=len(self.ctx)
         # because No conversion function for contrib_SyncBatchNorm yet.
         self.net = CarNet(spec, num_sync_bn_devices=-1)
@@ -96,7 +96,6 @@ class YOLO(object):
             print('cast net to FP16')
             self.net.cast('float16')
 
-        # self.backup_dir = os.path.join(self.version, 'backup')
         self.backup_dir = os.path.join(
             '/media/nolan/SSD1/YOLO_backup/car',
             self.version,
@@ -655,8 +654,10 @@ class YOLO(object):
                 bg, 'valid', pascal_rate=0.5, render_rate=0.9)
 
             # -------------------- predict -------------------- #
-            x1, x2, x3 = self.net.forward(is_train=False, data=imgs)
-            outs = self.predict([x1, x2, x3])
+            net_out = self.net.forward(is_train=False, data=imgs)
+            # net_out = [x1, x2, x3], which shapes are
+            # (1L, 640L, 3L, 30L), (1L, 160L, 3L, 30L), (1L, 40L, 3L, 30L)
+            outs = self.predict(net_out)
 
             # -------------------- show -------------------- #
             img = yolo_gluon.batch_ndimg_2_cv2img(imgs)[0]
@@ -674,7 +675,7 @@ class YOLO(object):
                           shape,
                           self.ctx[0],
                           self.export_folder,
-                          onnx=False,
+                          onnx=self.export_onnx,
                           fp16=self.use_fp16)
 
     def valid_Nima(self):
@@ -698,6 +699,7 @@ class YOLO(object):
         o: generate from valid_Nima_plot
         '''
         import cv2
+        from global_variable import freiburg_path
 
         image_w = 960.
         image_h = 540.
@@ -772,6 +774,7 @@ class YOLO(object):
 
     def valid_Nima_plot(self):
         import matplotlib.pyplot as plt
+        from global_variable import freiburg_path
         filter_index = [14, 17]
         path = (freiburg_path + '/result_%s/annotations' % self.version)
         plot_path = os.path.join(path, 'plot')
@@ -854,6 +857,80 @@ class YOLO(object):
             assert type(data) == mx.ndarray.ndarray.NDArray, (
                 'list  element should be mxnet.ndarray')
             x[i] = x[i].astype('float32', copy=False)
+        return x
+
+
+class YOLO_dense(YOLO):
+    def _init_net(self, spec, weight):
+        from utils import CarDenseNet
+        num_anchors = len(self.all_anchors[0])
+        channels_per_anchor = self.slice_point[-1]
+        channels = num_anchors * channels_per_anchor
+
+        self.net = CarDenseNet(
+            self.num_init_features,
+            self.growth_rate,
+            self.block_config,
+            classes=channels-7,
+            num_anchors=num_anchors)
+
+        if self.use_fp16:
+            print('cast net to FP16')
+            self.net.cast('float16')
+
+        # self.backup_dir = os.path.join(self.version, 'backup')
+        self.backup_dir = os.path.join(
+            '/media/nolan/SSD1/YOLO_backup/car',
+            self.version,
+            'backup')
+
+        if weight is None:
+            weight = yolo_gluon.get_latest_weight_from(self.backup_dir)
+
+        yolo_gluon.init_NN(self.net, weight, self.ctx)
+
+    def predict(self, batch_out):
+        # valid: [(1L, 160L, 5L, 30L)]
+        batch_out = batch_out[0] if type(batch_out) == list else batch_out
+
+        batch_out = self.fp16_2_fp32(batch_out) if self.use_fp16 else batch_out
+        batch_out = self.merge_and_slice(batch_out, self.slice_point)
+
+        batch_score = nd.sigmoid(batch_out[0])
+        batch_box = nd.concat(batch_out[1], batch_out[2], dim=-1)
+        batch_box = self._yxhw_to_ltrb(batch_box)
+        batch_out = nd.concat(batch_score,
+                              batch_box,
+                              batch_out[3],
+                              batch_out[4], dim=-1)
+
+        batch_out = nd.split(batch_out, axis=0, num_outputs=len(batch_out))
+
+        batch_pred = []
+        for i, out in enumerate(batch_out):
+            best_anchor_index = batch_score[i].reshape(-1).argmax(axis=0)
+            out = out.reshape((-1, 6+self.num_class))
+
+            pred = out[best_anchor_index][0]  # best out
+            y = (pred[2] + pred[4]) / 2
+            x = (pred[1] + pred[3]) / 2
+            h = (pred[4] - pred[2])
+            w = (pred[3] - pred[1])
+            pred[1:5] = nd.concat(y, x, h, w, dim=-1)
+            batch_pred.append(nd.expand_dims(pred, axis=0))
+
+        batch_pred = nd.concat(*batch_pred, dim=0)
+
+        return batch_pred.asnumpy()
+
+    def merge_and_slice(self, output, points):
+        i = 0
+        x = []
+        for pt in points:
+            y = output.slice_axis(begin=i, end=pt, axis=-1)
+            x.append(y)
+            i = pt
+
         return x
 
 
