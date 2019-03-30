@@ -9,13 +9,13 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32MultiArray
 
-from yolo_modules.licence_plate_render import ProjectRectangle6D
-
-from yolo_modules.yolo_cv import cv2_flip_and_clip_frame
-from yolo_modules import yolo_gluon
 from LP_detection import LicencePlateDetectioin, Parser
+from yolo_modules import yolo_gluon
+from yolo_modules import global_variable
+from yolo_modules.licence_plate_render import ProjectRectangle6D
+from yolo_modules.yolo_cv import cv2_flip_and_clip_frame
 
-os.environ['MXNET_ENABLE_GPU_P2P'] = '0'
+
 os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 
 video_verbose = False
@@ -40,10 +40,11 @@ def video(args):
         import numpy as np
         from yolo_modules.tensorrt_module import do_inference_wrapper
         from yolo_modules.tensorrt_module import get_engine_wrapper
-        engine_wrapper = get_engine_wrapper(
-            args.version + '/export/onnx/out.onnx',
-            args.version + '/export/onnx/out.trt')
-
+        engine_wrapper = get_engine_wrapper(args.version)
+        net_out_shape = (
+            1, LPD.LP_slice_point[-1],
+            h/2**LPD.num_downsample,
+            w/2**LPD.num_downsample)
     else:
         import mxnet
         # mx_resize = mxnet.image.ForceResizeAug((w, h), interp=2)  # not always available
@@ -62,25 +63,32 @@ def video(args):
         if not net_thread_start:
             time.sleep(0.01)
             continue
+        try:
+            net_start_time = time.time()  # tic
+            net_img = img_g.copy()  # (480, 640, 3), np.float32
+            net_img = cv2.resize(net_img, (w, h))  # (320, 512, 3)
 
-        net_start_time = time.time()  # tic
-        net_img = img_g.copy()  # (480, 640, 3), np.float32
-        net_img = cv2.resize(net_img, (w, h))  # (320, 512, 3)
+            if args.trt:
+                # if cuMemcpyHtoDAsync failed: invalid argument, check input image size
+                trt_outputs = do_inference_wrapper(engine_wrapper, net_img)
+                net_out = np.array(trt_outputs).reshape(net_out_shape)  # list to np.array
 
-        if args.trt:
-            # if cuMemcpyHtoDAsync failed: invalid argument, check input image size
-            trt_outputs = do_inference_wrapper(engine_wrapper, net_img)
-            net_out = np.array(trt_outputs).reshape((1, 10, 10, 16))  # list to np.array
+            else:
+                nd_img = yolo_gluon.cv_img_2_ndarray(net_img, LPD.ctx[0])#, mxnet_resize=mx_resize)
+                net_out = net.forward(is_train=False, data=nd_img)[0]
+                net_out[-1].wait_to_read()
 
-        else:
-            nd_img = yolo_gluon.cv_img_2_ndarray(net_img, LPD.ctx[0])#, mxnet_resize=mx_resize)
-            net_out = net.forward(is_train=False, data=nd_img)[0]
-            net_out[-1].wait_to_read()
+            yolo_gluon.switch_print(time.time()-net_start_time, video_verbose)
+            net_img_g = net_img
+            net_out_g = net_out
+            net_thread_start = False
 
-        yolo_gluon.switch_print(time.time()-net_start_time, video_verbose)
-        net_img_g = net_img
-        net_out_g = net_out
-        net_thread_start = False
+        except Exception as e:
+            print(global_variable.red)
+            rospy.signal_shutdown('main_thread Error')
+            print(e)
+            print(global_variable.reset_color)
+    sys.exit(0)
 
 
 def _video_thread(record=False):
@@ -115,25 +123,31 @@ def _video_thread(record=False):
             time.sleep(1)
             print('Wait For Net')
             continue
+        try:
+            img = net_img_g.copy()
+            net_out = net_out_g.copy()
+            net_thread_start = True
 
-        img = net_img_g.copy()
-        net_out = net_out_g.copy()
-        net_thread_start = True
+            img = cv2_flip_and_clip_frame(img, (args.clip_h, args.clip_w), args.flip)
+            pred = LPD.predict_LP(net_out)
+            ps_pub.publish(pose_msg)
 
-        img = cv2_flip_and_clip_frame(img, (args.clip_h, args.clip_w), args.flip)
-        pred = LPD.predict_LP(net_out)
-        ps_pub.publish(pose_msg)
+            if pred[0] > video_threshold:
+                img, clipped_LP = pjct_6d.add_edges(img, pred[1:])
+                clipped_LP = bridge.cv2_to_imgmsg(clipped_LP, 'bgr8')
+                LP_pub.publish(clipped_LP)
 
-        if pred[0] > video_threshold:
-            img, clipped_LP = pjct_6d.add_edges(img, pred[1:])
-            clipped_LP = bridge.cv2_to_imgmsg(clipped_LP, 'bgr8')
-            LP_pub.publish(clipped_LP)
+            if args.show:
+                cv2.imshow('img', img)
+                cv2.waitKey(1)
+            #video_out.write(ori_img)
+            #rate.sleep()
 
-        if args.show:
-            cv2.imshow('img', img)
-            cv2.waitKey(1)
-        #video_out.write(ori_img)
-        #rate.sleep()
+        except Exception as e:
+            print(global_variable.red)
+            rospy.signal_shutdown('_video_thread Error')
+            print(e)
+            print(global_variable.reset_color)
 
 
 def _image_callback(img):
@@ -165,8 +179,7 @@ def _get_frame():
     else:
         print(global_variable.red)
         print('dev should be jetson / video_path(mp4, avi, m2ts) / device_index')
-        rospy.signal_shutdown('')
-        sys.exit(0)
+        rospy.signal_shutdown('_get_frame Error')
 
     print(global_variable.reset_color)
     while not rospy.is_shutdown():

@@ -26,7 +26,12 @@ verbose = 0
 
 class CarLPVideo(Video):
     def __init__(self, args):
-        self.yolo = YOLO(args)
+        if args.version in['v1', 'v2', 'v3', 'v4']:
+            self.yolo = YOLO(args)
+        else:
+            print(global_variable.red+'Version Error')
+            print(global_variable.reset_color)
+            sys.exit(0)
 
         self.project_rect_6d = licence_plate_render.ProjectRectangle6D(
             int(380*1.1), int(160*1.1))
@@ -83,5 +88,4 @@ class CarLPVideo(Video):
 
 if __name__ == '__main__':
     args = car.utils.video_Parser()
-    video = CarLPVideo(args)
-    main(video)
+    main(CarLPVideo, args)

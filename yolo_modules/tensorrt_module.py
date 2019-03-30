@@ -191,7 +191,9 @@ def get_engine(onnx_file_path, engine_file_path=""):
         return build_engine()
 
 
-def get_engine_wrapper(onnx_file_path, engine_file_path=""):
+def get_engine_wrapper(version):
+    onnx_file_path = version + '/export/onnx/out.onnx'
+    engine_file_path = version + '/export/onnx/out.trt'
     engine = get_engine(onnx_file_path, engine_file_path)
     context = engine.create_execution_context()
     inputs, outputs, bindings, stream = allocate_buffers(engine)

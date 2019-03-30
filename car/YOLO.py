@@ -66,14 +66,17 @@ class YOLO(object):
 
         self.version = args.version
         # -------------------- Load "Executor" !!! -------------------- #
-        if (args.mode == 'video' or
-           args.mode == 'valid' or
-           args.mode == 'valid_Nima'):
+        if args.mode in ['video', 'valid', 'valid_Nima']:
+            self.trt = args.trt
+            if args.trt:
+                from yolo_modules.tensorrt_module import get_engine_wrapper
+                self.net = get_engine_wrapper(args.version)
 
-            self.net = yolo_gluon.init_executor(
-                self.export_folder,
-                self.size, self.ctx[0],
-                fp16=self.use_fp16)
+            else:
+                self.net = yolo_gluon.init_executor(
+                    self.export_folder,
+                    self.size, self.ctx[0],
+                    fp16=self.use_fp16)
 
             return
 

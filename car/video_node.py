@@ -26,6 +26,7 @@ from YOLO import *
 import numpy as np
 from os.path import split
 
+os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 DEPTH_TOPIC = '/zed/depth/depth_registered'
 # DEPTH_TOPIC = '/drone/camera/depth/image_raw'
 verbose = 0
@@ -37,7 +38,14 @@ _cos_offset = np.array([math.cos(x*math.pi/180) for x in range(0, 360, _step)])
 _sin_offset = np.array([math.sin(x*math.pi/180) for x in range(0, 360, _step)])
 
 
-def main(video):
+def main(Video, args):
+    if args.trt and args.radar:
+        args.trt = False
+        print(global_variable.magenta+'--trt, --radar cant use at the same time')
+        print('Use Mxnet For Inference')
+        print(global_variable.reset_color)
+
+    video = Video(args)
     if video.radar:
         video.run()  # One thread, matplotlib is not thread safty
     else:
@@ -50,9 +58,20 @@ class Video(object):
             self.yolo = YOLO(args)
         elif args.version in['v11']:
             self.yolo = YOLO_dense(args)
+        else:
+            print(global_variable.red+'Version Error')
+            print(global_variable.reset_color)
+            sys.exit(0)
 
         self.car_threshold = 0.5
         self._init(args)
+
+        if args.trt:
+            global do_inference_wrapper
+            from yolo_modules.tensorrt_module import do_inference_wrapper
+        else:
+            shape = (1, 3, self.yolo.size[0], self.yolo.size[1])
+            yolo_gluon.test_inference_rate(self.yolo.net, shape, cycles=200)
 
     def _init(self, args):
         # -------------------- init_args -------------------- #
@@ -108,7 +127,6 @@ class Video(object):
         print(global_variable.green)
         print('Start Double Thread Video Node')
 
-        ctx = self.ctx[0]
         h, w = self.yolo.size
         threading.Thread(target=self._video_thread).start()
         self.net_thread_start = True
@@ -122,95 +140,108 @@ class Video(object):
             if not self.net_thread_start:
                 time.sleep(0.01)
                 continue
-            # -------------------- additional image info-------------------- #
-            net_img_time, net_img_seq = self.img_cb_time, self.img_cb_seq
-            now = rospy.get_rostime()
-            yolo_gluon.switch_print('cam to net: %f' % (now - net_img_time).to_sec(), verbose)
+            try:
+                # ------------------ additional image info In ------------------ #
+                now = rospy.get_rostime()
+                net_img_time, net_img_seq = self.img_cb_time, self.img_cb_seq
+                net_img, net_dep = copy.copy(self.image), copy.copy(self.depth_image)
+                yolo_gluon.switch_print('cam to net: %f' % (now - net_img_time).to_sec(), verbose)
 
-            net_dep = copy.copy(self.depth_image)
-            net_img = copy.copy(self.image)
-            net_img = cv2.resize(net_img, (w, h))
+                net_out = self.inference(cv2.resize(net_img, (w, h)))
 
-            # -------------------- image -------------------- #
-            if self.trt:
-                pass
-            else:
-                nd_img = yolo_gluon.cv_img_2_ndarray(net_img, ctx)
-                # if self.yolo.use_fp16:
-                #     nd_img = nd_img.astype('float16')
-                # nd_img = yolo_gluon.nd_white_balance(nd_img, bgr=[1.0, 1.0, 1.0])
-                net_out = self.yolo.net.forward(is_train=False, data=nd_img)
-                net_out[0].wait_to_read()
+                # -------------------- additional image info-------------------- #
+                now = rospy.get_rostime()
+                yolo_gluon.switch_print('net done time: %f' % (now - net_img_time).to_sec(), verbose)
 
-            # -------------------- additional image info-------------------- #
-            self.net_img_time = net_img_time
-            self.net_img_seq = net_img_seq
-            now = rospy.get_rostime()
-            yolo_gluon.switch_print('net done time: %f' % (now - net_img_time).to_sec(), verbose)
+                # ------------------ additional image info Out ------------------ #
+                self.net_img_time, self.net_img_seq = net_img_time, net_img_seq
+                self.net_dep, self.net_img, self.net_out = net_dep, net_img, net_out
+                self.net_thread_start = False
 
-            # -------------------- image -------------------- #
-            self.net_dep = net_dep
-            self.net_img = net_img
-            self.net_out = net_out
-            self.net_thread_start = False
+            except Exception as e:
+                rospy.signal_shutdown('main_thread Error')
+                print(global_variable.red + e + global_variable.reset_color)
+
+        sys.exit(0)
 
     def _video_thread(self):
-        shape = (1, 3, self.yolo.size[0], self.yolo.size[1])
-        yolo_gluon.test_inference_rate(self.yolo.net, shape, cycles=200)
-
         while not hasattr(self, 'net_out') or not hasattr(self, 'net_img'):
             time.sleep(0.1)
 
-        #rate = rospy.Rate(30)
         print(global_variable.reset_color)
-
         while not rospy.is_shutdown():
             net_dep = copy.copy(self.net_dep)
             net_out = copy.copy(self.net_out)
             net_img = copy.copy(self.net_img)
 
             self.net_thread_start = True
-            self.process(net_img, net_out, net_dep)
-            #rate.sleep()
+            try:
+                self.process(net_img, net_out, net_dep)
+
+            except Exception as e:
+                rospy.signal_shutdown(global_variable.red+'_video_thread Error')
+                print(e)
+                print(global_variable.reset_color)
 
     def run(self):
         print(global_variable.green)
         print('Start Single Thread Video Node')
         print(global_variable.reset_color)
+
         h, w = self.yolo.size
-        shape = (1, 3, h, w)
-        yolo_gluon.test_inference_rate(self.yolo.net, shape, cycles=200)
-
-        #mx_resize = mxnet.image.ForceResizeAug((w, h))
+        rate = rospy.Rate(30)
         while not rospy.is_shutdown():
-            if not hasattr(self, 'image') or self.image is None:
+            if self.image is None:
                 print('Wait For Image')
-                time.sleep(1.0)
+                rate.sleep()
                 continue
-            self.net_img_time = self.img_cb_time
+            try:
+                # -------------------- additional image info-------------------- #
+                now = rospy.get_rostime()
+                net_img_time, net_img_seq = self.img_cb_time, self.img_cb_seq
+                net_img, net_dep = copy.copy(self.image), copy.copy(self.depth_image)
+                yolo_gluon.switch_print('cam to net: %f' % (now - net_img_time).to_sec(), verbose)
 
-            # -------------------- image -------------------- #
-            net_dep = copy.copy(self.depth_image)
-            net_img = copy.copy(self.image)
-            net_img = cv2.resize(net_img, (w, h))
+                net_out = self.inference(cv2.resize(net_img, (w, h)))
+
+                # -------------------- additional image info-------------------- #
+                now = rospy.get_rostime()
+                self.net_img_time, self.net_img_seq = net_img_time, net_img_seq
+                yolo_gluon.switch_print('net done time: %f' % (now - net_img_time).to_sec(), verbose)
+
+                self.process(net_img, net_out, net_dep)
+                rate.sleep()
+
+            except Exception as e:
+                rospy.signal_shutdown('main_thread Error')
+                print(global_variable.red + e + global_variable.reset_color)
+
+    def inference(self, net_img):
+        if self.trt:
+            trt_outputs = do_inference_wrapper(self.yolo.net, net_img)
+            net_out = nd.array(trt_outputs).as_in_context(self.ctx[0])
+            net_out = [net_out.reshape((1, 160, 5, 30))]
+
+        else:
             nd_img = yolo_gluon.cv_img_2_ndarray(net_img, self.ctx[0])
-            # nd_img = yolo_gluon.nd_white_balance(nd_img, bgr=[1.0, 1.0, 1.0])
             # if self.yolo.use_fp16:
             #     nd_img = nd_img.astype('float16')
+            # nd_img = yolo_gluon.nd_white_balance(nd_img, bgr=[1.0, 1.0, 1.0])
             net_out = self.yolo.net.forward(is_train=False, data=nd_img)
-            self.process(net_img, net_out, net_dep)
+            net_out[0].wait_to_read()
+
+        return net_out
 
     def process(self, net_img, net_out, net_dep):
         pred_car = self.yolo.predict(net_out[:3])
         # --------------- data[5] is depth --------------- #
-        '''
         if net_dep:  # net_dep != None
             x = int(net_dep.shape[1] * pred_car[0, 2])
             y = int(net_dep.shape[0] * pred_car[0, 1])
             pred_car[0, 5] = net_dep[y, x]
         else:
             pred_car[0, 5] = -1
-        '''
+
         # ---------------- data[5] is azi ---------------- #
         x = pred_car[0, -24:]
         prob = np.exp(x) / np.sum(np.exp(x), axis=0)
@@ -220,7 +251,6 @@ class Video(object):
         pred_car[0, 5] = vec_ang
         # ------------------------------------------------- #
         yolo_gluon.switch_print('cam to pub: %f' % (rospy.get_rostime() - self.net_img_time).to_sec(), verbose)
-
         self.ros_publish_array(self.car_pub, self.mat_car, pred_car[0])
         self.visualize(pred_car, net_img)
 
@@ -302,5 +332,4 @@ class Video(object):
 
 if __name__ == '__main__':
     args = utils.video_Parser()
-    video = Video(args)
-    main(video)
+    main(Video, args)

@@ -109,6 +109,7 @@ class LicencePlateDetectioin():
         self.version = args.version
         self.ctx = yolo_gluon.get_ctx(args.gpu)
         self.export_file = args.version + '/export/'
+        self.num_downsample = len(self.block_config) + 1
 
         assert args.mode in ['train', 'valid', 'export', 'video']
         if args.mode == 'video':
@@ -227,8 +228,6 @@ class LicencePlateDetectioin():
         self.exp = self.exp + datetime.datetime.now().strftime("%m-%dx%H-%M")
 
         self.batch_size *= len(self.ctx)
-
-        self.num_downsample = len(self.block_config) + 1
 
         print(global_variable.yellow)
         print('Batch Size = {}'.format(self.batch_size))
