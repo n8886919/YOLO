@@ -2,6 +2,7 @@
 <!--[VOR Weight Link v1](https://drive.google.com/file/d/15N1DZMfx1FsYSp-y597U-pQ3UqhQDZF4/view?usp=sharing)
 [VOR Weight Link v2](https://drive.google.com/file/d/1MjkZuel-bEtuY6qEKOAreLbYO27H6rtG/view?usp=sharing)-->
 + [VOR Weight Link v4](https://drive.google.com/file/d/1q5gFMpZopVaN77bGGO0z9-MSFz1Dux_7/view?usp=sharing)
++ [VOR Weight Link v11](https://drive.google.com/open?id=1DCdvaCG_jYw-F9hTr6JPsm6aYfuhaAtx)
 + [Download Test  Video](https://drive.google.com/file/d/1dYkultUic8WBqNL02yzqRZjyujPuWGA1/view?usp=sharing)
 ## Video Demo
 ```sh
@@ -34,8 +35,9 @@ python YOLO.py <version> <mode>
 - version:
   + v1: darknet53, 方位角
   + v2: small darknet, 方位角+俯角
-  + v3: small darknet, 方位角, FP16
+  + v3: small darknet, 方位角, FP16(fail)
   + v4: middle darknet, 方位角
+  + v11: DenseNet, 方位角
 
 - mode:
   + train

@@ -12,7 +12,6 @@ import matplotlib
 import PIL
 
 import mxnet
-from mxnet import gpu
 from mxnet import nd
 
 from yolo_modules import global_variable
@@ -237,6 +236,7 @@ class LPGenerator():
 
             raw_input('next')
         '''
+
     def label2nparray(self, label):
         score = nd.zeros((24))
         for L in label:  # all object in the image
@@ -253,7 +253,7 @@ class LPGenerator():
         return score.asnumpy()
 
     def test_add(self, b):
-        batch_iter = load(b, h, w)
+        batch_iter = yolo_gluon.load_background('val', b, h, w)
         for batch in batch_iter:
             imgs = batch.data[0].as_in_context(ctx[0])  # b*RGB*w*h
             labels = batch.label[0].as_in_context(ctx[0])  # b*L*5
@@ -404,7 +404,7 @@ class ProjectRectangle6D():
 
 if __name__ == '__main__':
     g = LPGenerator(640, 480, 0)
-    g.test_render(4)
+    g.test_add(4)
 '''
 a = 84.0*sin(r1)*cos(r2)
 b = 84.0*sin(r1)*sin(r2)*cos(r3)
