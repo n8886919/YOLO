@@ -390,7 +390,20 @@ def get_ctx(gpu):
     example
     [0, 1, 2] --> [mxnet.gpu(0), mxnet.gpu(1), mxnet.gpu(2)]
     '''
-    return [mxnet.gpu(int(i)) for i in gpu]
+    available_gpu = mxnet.test_utils.list_gpus()
+    if available_gpu == []:
+        print(global_variable.yellow + 'NO GPU be Detected!')
+        return [mxnet.cpu(0)]
+    ctx = []
+    for gpu_index in gpu:
+        if gpu_index in available_gpu:
+            ctx.append(mxnet.gpu(int(gpu_index)))
+        else:
+            print(global_variable.yellow + 'GPU index_%s Error!' % gpu_index)
+    if ctx == []:
+        ctx = [mxnet.cpu(0)]
+    print(global_variable.reset_color)
+    return ctx
 
 
 def nd_label_batch_ltrb2yxhw(label_batch):
