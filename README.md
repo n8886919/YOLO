@@ -52,7 +52,6 @@ conda create --name yolo_test python=2.7 pip
 conda activate yolo_test
 # then
 cd <$git clone path>
-conda install pip
 pip install -r requirements.txt 
 ```
 + [Install pycuda](https://wiki.tiker.net/PyCuda/Installation/Linux/Ubuntu)(或是把用到他的地方都註解掉)
