@@ -71,7 +71,7 @@ class Video(object):
             from yolo_modules.tensorrt_module import do_inference_wrapper
         else:
             shape = (1, 3, self.yolo.size[0], self.yolo.size[1])
-            yolo_gluon.test_inference_rate(self.yolo.net, shape, cycles=200)
+            #yolo_gluon.test_inference_rate(self.yolo.net, shape, cycles=200)
 
     def _init(self, args):
         # -------------------- init_args -------------------- #
