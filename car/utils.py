@@ -12,7 +12,7 @@ from yolo_modules import yolo_cv
 def yolo_Parser():
     parser = argparse.ArgumentParser(prog="python YOLO.py")
 
-    parser.add_argument("version", help="v1")
+    parser.add_argument("version", help="v11")
     parser.add_argument("mode", help="train or valid")
 
     # -------------------- select options -------------------- #
@@ -27,7 +27,7 @@ def yolo_Parser():
 
 def video_Parser():
     parser = argparse.ArgumentParser(prog="python video_node.py")
-    parser.add_argument("version", help="v1")
+    parser.add_argument("version", help="v11")
 
     # -------------------- select options -------------------- #
     parser.add_argument("--mode", help="video", dest="mode", default="video")

@@ -9,8 +9,8 @@
 cd <$git clone path>
 export PYTHONPATH=$PYTHONPATH:$(pwd)
 cd car
-python YOLO.py v4 export --weight <$LPD_weight_path>
-python video_node.py v4 video --dev <$video_path>
+python YOLO.py v11 export --weight <$LPD_weight_path>
+python video_node.py v11 --dev <$video_path>
 ```
 
 ### optional arguments:
