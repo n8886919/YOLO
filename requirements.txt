@@ -1,5 +1,5 @@
 mxnet-cu100
-opencv-python==3.4.4.19
+opencv-python==3.4.7.28
 pyyaml
 rospkg==1.1.7
 sympy==1.3
