@@ -1,5 +1,5 @@
 # Licence Plate Detection
-+ [LPD Weight Link v2](https://drive.google.com/file/d/1KbWPrcSqCCn3XZ3wqlEP45U13wHm2mZS/view?usp=sharing)
++ [LPD Weight Link v2](https://drive.google.com/drive/folders/1pJCvecB8xEbDk4Ju_mXL9YJc3mRWX7fQ?usp=share_link)
 + [Download Test  Video](https://drive.google.com/file/d/1dYkultUic8WBqNL02yzqRZjyujPuWGA1/view?usp=sharing)
 ```sh
 cd <$git clone path>
